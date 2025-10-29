@@ -1,58 +1,91 @@
 // supabase/functions/auth-signup/index.ts
-// Deno, TypeScript. Creates the auth user via Admin API, then completes DB work in a single RPC transaction.
-// If DB work fails, it deletes the created auth user to avoid orphans.
+// Deno-only friendly: works with or without the Supabase CLI.
+// Adds MOCK_SUPABASE mode for offline testing (no network).
 
-// ✅ Use Edge runtime types (no std/http import needed)
 /// <reference no-default-lib="true"/>
 /// <reference lib="deno.ns" />
 /// <reference lib="dom" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-import { createClient } from "@supabase/supabase-js";
-import { z } from "zod";
+// Load .env from CWD when running locally with Deno
+import "https://deno.land/std@0.224.0/dotenv/load.ts";
+
+// Use esm.sh so we don't need a deno.json npm mapping
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 // -------- _shared imports (relative path from function folder) ----------
 import { corsHeaders, allowOrigin } from "../_shared/cors.ts";
 import { json, badRequest, conflict, serverError } from "../_shared/response.ts";
-import { passwordSchema, dateNotInFuture } from "../_shared/validation.ts";
+import { passwordSchema } from "../_shared/validation.ts";
 
-// -------- Supabase Admin client (service role) ----------
-import process from "node:process";
+// -------- Env + mock switch ----------
+const MOCK = Deno.env.get("MOCK_SUPABASE") === "1";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-if (!SUPABASE_URL || !SERVICE_KEY) {
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+if (!MOCK && (!SUPABASE_URL || !SERVICE_KEY)) {
   throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
 }
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { persistSession: false },
-});
 
-// -------- Request schema ----------
-const SignUpSchema = z.object({
+const supabaseAdmin = MOCK
+  ? null
+  : createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+// -------- Helpers ----------
+const ALLOWED_POS = ["attack","midfield","defense","faceoff","goalie"] as const;
+type AllowedPos = (typeof ALLOWED_POS)[number];
+
+function normalizePosition(s: string): AllowedPos | "__invalid__" {
+  const n = s.trim().toLowerCase().replace(/\s+/g, "");
+  return (ALLOWED_POS as readonly string[]).includes(n) ? (n as AllowedPos) : "__invalid__";
+}
+
+// -------- Request schema (new signatures) ----------
+const AthleteSchema = z.object({
+  role: z.literal("athlete"),
   joinCode: z.string().trim().min(1, "Join code is required"),
-  role: z.enum(["athlete", "coach", "parent"]),
   email: z.string().email("Valid email required"),
-  password: passwordSchema, // min 8, letters+numbers
+  password: passwordSchema,
   firstName: z.string().trim().min(1, "First name is required"),
   lastName: z.string().trim().min(1, "Last name is required"),
-  username: z.string().trim().min(3).max(50), // stored in user_metadata (no DB constraint here)
-  primary_position_id: z.string().uuid().optional(), // required for athletes
-  height_cm: z.number().min(1).optional(), // >0 if provided
-  weight_kg: z.number().min(1).optional(), // >0 if provided
-  birthdate: z
-    .string()
-    .refine(dateNotInFuture, { message: "Birthdate cannot be in the future" })
-    .optional(),
-  notes: z.string().optional(),
-  // optional for parent/coach:
-  phone: z.string().optional(),
+  cellNumber: z.string().optional(),
+  graduationYear: z.number({ coerce: true }).int().min(1900).max(2100),
+  positions: z.array(z.string()).nonempty("At least one position is required"),
+  termsAccepted: z.literal(true),
+  username: z.string().trim().min(3).max(50).optional(),
 });
+
+const CoachSchema = z.object({
+  role: z.literal("coach"),
+  joinCode: z.string().trim().min(1, "Join code is required"),
+  email: z.string().email("Valid email required"),
+  password: passwordSchema,
+  firstName: z.string().trim().min(1, "First name is required"),
+  lastName: z.string().trim().min(1, "Last name is required"),
+  cellNumber: z.string().optional(),
+  termsAccepted: z.literal(true),
+  username: z.string().trim().min(3).max(50).optional(),
+});
+
+const ParentSchema = z.object({
+  role: z.literal("parent"),
+  joinCode: z.string().trim().min(1, "Join code is required"),
+  email: z.string().email("Valid email required"),
+  password: passwordSchema,
+  firstName: z.string().trim().min(1, "First name is required"),
+  lastName: z.string().trim().min(1, "Last name is required"),
+  cellNumber: z.string().optional(),
+  termsAccepted: z.literal(true),
+  username: z.string().trim().min(3).max(50).optional(),
+});
+
+const SignUpSchema = z.discriminatedUnion("role", [AthleteSchema, CoachSchema, ParentSchema]);
 
 // -------- Handler ----------
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders(allowOrigin(origin)) });
   }
@@ -69,44 +102,47 @@ Deno.serve(async (req) => {
       return badRequest(msg, origin);
     }
 
-    const {
-      joinCode,
-      role,
-      email,
-      password,
-      firstName,
-      lastName,
-      username,
-      primary_position_id,
-      height_cm,
-      weight_kg,
-      birthdate,
-      notes,
-      phone,
-    } = parsed.data;
+    const base = parsed.data as any; // one of AthleteSchema | CoachSchema | ParentSchema
+    const { role, joinCode, email, password, firstName, lastName } = base;
 
-    // Validate role-specific requirements
-    if (role === "athlete" && !primary_position_id) {
-      return badRequest("Primary position is required.", origin);
+    // ===== MOCK MODE =====
+    if (MOCK) {
+      const mockUserId = crypto.randomUUID();
+      return json({
+        ok: true,
+        user_id: mockUserId,
+        role,
+        org_id: crypto.randomUUID(),
+        team_id: crypto.randomUUID(),
+        ...(role === "athlete"
+          ? { athlete_id: crypto.randomUUID() }
+          : role === "coach"
+            ? { coach_id: crypto.randomUUID() }
+            : { guardian_id: crypto.randomUUID() }),
+        message: "(MOCK) Welcome to ANKOR! Redirecting to dashboard…",
+      }, origin, 201);
     }
 
-    // Create auth user (unconfirmed -> let email verification flow handle confirmation)
-    const full_name = `${firstName} ${lastName}`.trim();
+    // ===== REAL SUPABASE MODE =====
     const { data: created, error: createErr } =
-      await supabaseAdmin.auth.admin.createUser({
+      await supabaseAdmin!.auth.admin.createUser({
         email,
         password,
         user_metadata: {
           first_name: firstName,
           last_name: lastName,
-          username,
+          username: base.username ?? null,
+          cell_number: base.cellNumber ?? null,
+          join_code: joinCode,
+          ...(role === "athlete"
+            ? { graduation_year: base.graduationYear, positions: base.positions }
+            : {})
         },
-        app_metadata: { role }, // useful for RLS
-        email_confirm: false, // set to true to auto-confirm if you want to skip verification
+        app_metadata: { role },
+        email_confirm: false,
       });
 
     if (createErr) {
-      // Duplicate email handling
       if (String(createErr.message).toLowerCase().includes("user already registered")) {
         return conflict("Email already registered", origin);
       }
@@ -114,74 +150,101 @@ Deno.serve(async (req) => {
     }
 
     const userId = created.user?.id;
-    if (!userId) {
-      return serverError("User was not returned by Supabase", origin);
-    }
+    if (!userId) return serverError("User was not returned by Supabase", origin);
 
-    // Call the right RPC to finish the transactional work
+    // ---- Build correct RPC call per the NEW SQL signatures ----
     let rpcName = "";
     let rpcArgs: Record<string, unknown> = {};
 
     if (role === "athlete") {
+      // normalize & validate positions
+      const normalized = (base.positions as string[]).map(normalizePosition);
+      const invalid = normalized.filter((p) => p === "__invalid__");
+      if (invalid.length > 0) {
+        return badRequest("Invalid position value(s). Allowed: Attack, Midfield, Defense, Face Off, Goalie.", origin);
+      }
+      const positions = normalized as AllowedPos[];
+
       rpcName = "signup_register_athlete_with_code_tx";
       rpcArgs = {
         p_user_id: userId,
         p_code: joinCode,
-        p_full_name: full_name,
-        p_primary_position_id: primary_position_id,
-        p_height_cm: height_cm ?? null,
-        p_weight_kg: weight_kg ?? null,
-        p_birthdate: birthdate ?? null,
-        p_notes: notes ?? null,
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_email: email,
+        p_graduation_year: base.graduationYear,
+        p_cell_number: base.cellNumber ?? null,
+        p_positions: positions,          // -> public.lax_position[]
+        p_terms_accepted: true
       };
     } else if (role === "coach") {
       rpcName = "signup_register_coach_with_code_tx";
       rpcArgs = {
         p_user_id: userId,
         p_code: joinCode,
-        p_full_name: full_name,
+        p_first_name: firstName,
+        p_last_name: lastName,
         p_email: email,
+        p_cell_number: base.cellNumber ?? null,
+        p_terms_accepted: true
       };
     } else {
-      // parent
       rpcName = "signup_register_parent_with_code_tx";
       rpcArgs = {
         p_user_id: userId,
         p_code: joinCode,
-        p_full_name: full_name,
+        p_first_name: firstName,
+        p_last_name: lastName,
         p_email: email,
-        p_phone: phone ?? null,
+        p_cell_number: base.cellNumber ?? null,
+        p_terms_accepted: true
       };
     }
 
-    const { data: txData, error: txErr } = await supabaseAdmin.rpc(rpcName, rpcArgs);
+    const { data: txData, error: txErr } = await supabaseAdmin!.rpc(rpcName, rpcArgs);
+
     if (txErr) {
-      // Clean up the auth user if DB setup failed
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+      // cleanup auth user if DB setup failed
+      await supabaseAdmin!.auth.admin.deleteUser(userId).catch(() => {});
       const m = String(txErr.message);
+
+      // Map common SQL exceptions to user-friendly messages
       if (m.includes("INVALID_JOIN_CODE") || m.includes("EXPIRED_OR_USED_JOIN_CODE")) {
-        return badRequest("Invalid or expired join code", origin);
+        return badRequest("Invalid or expired join code.", origin);
       }
-      if (m.includes("violates foreign key constraint") && role === "athlete") {
-        return badRequest("Primary position is required.", origin);
+      if (m.includes("TERMS_REQUIRED")) {
+        return badRequest("You must accept the terms & conditions.", origin);
       }
+      if (m.includes("GRADUATION_YEAR_REQUIRED")) {
+        return badRequest("Graduation year is required.", origin);
+      }
+      if (m.includes("POSITION_REQUIRED")) {
+        return badRequest("At least one position is required.", origin);
+      }
+      if (m.includes("FIRST_NAME_REQUIRED")) {
+        return badRequest("First name is required.", origin);
+      }
+      if (m.includes("LAST_NAME_REQUIRED")) {
+        return badRequest("Last name is required.", origin);
+      }
+      if (m.includes("EMAIL_REQUIRED")) {
+        return badRequest("Valid email is required.", origin);
+      }
+
       return serverError(`Signup failed: ${m}`, origin);
     }
 
-    // Success
-    return json(
-      {
-        ok: true,
-        user_id: userId,
-        role,
-        // txData contains org_id/team_id/(athlete_id|coach_id|guardian_id)
-        ...((Array.isArray(txData) && txData[0]) ? txData[0] : {}),
-        message: "Welcome to ANKOR! Redirecting to dashboard…",
-      },
-      origin,
-      201,
-    );
-  } catch (err: unknown) {
+    const payloadOut = (Array.isArray(txData) && txData[0]) ? txData[0] : {};
+
+    return json({
+      ok: true,
+      user_id: userId,
+      role,
+      ...payloadOut,
+      message: "Welcome to ANKOR! Redirecting to dashboard…",
+    }, origin, 201);
+
+  } catch (err) {
     return serverError(`Unexpected error: ${(err as Error)?.message ?? String(err)}`, origin);
   }
 });

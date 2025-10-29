@@ -1,4 +1,5 @@
-import { z } from "zod";
+// supabase/functions/_shared/validation.ts
+import { z } from "https://esm.sh/zod@3.23.8";
 
 export const passwordSchema = z
   .string()
@@ -9,6 +10,5 @@ export const passwordSchema = z
 export function dateNotInFuture(dateStr: string) {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return false;
-  const today = new Date();
-  return d <= today;
+  return d <= new Date();
 }
