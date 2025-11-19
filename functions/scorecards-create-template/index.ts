@@ -159,14 +159,9 @@ serve(async (req) => {
   };
 
   // Build client
-  const supabase = createClient(
-    SUPABASE_URL,
-    hasBearer && ANON_KEY ? ANON_KEY : SERVICE_ROLE,
-    {
-      auth: { autoRefreshToken: false, persistSession: false },
-      ...(hasBearer && ANON_KEY ? { global: { headers: { authorization: authHeader } } } : {}),
-    },
-  );
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 
   // RPC args: use auth.uid() when JWT present; otherwise createdBy
   const rpcArgs: Record<string, unknown> = { p_template: payload };
