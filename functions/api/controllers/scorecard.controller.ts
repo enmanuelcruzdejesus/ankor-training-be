@@ -1,8 +1,10 @@
+// supabase/functions/_shared/controllers/scorecards.ts
 import { ScorecardTemplateCreateSchema } from "../schemas/schemas.ts";
 import { badRequest, json, serverError } from "../utils/responses.ts";
-import { rpcCreateScorecardTemplate } from "../services/scorecards.ts";
+import { rpcCreateScorecardTemplate, listScorecardTemplates } from "../services/scorecards.service.ts";
 import { ANON_KEY } from "../config/env.ts";
 
+// ---- Create Template ----
 export async function handleScorecardsCreateTemplate(req: Request, origin: string | null) {
   if (req.method !== "POST") return badRequest("Method not allowed", origin);
 
@@ -14,6 +16,7 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
   }
   const body = parsed.data;
 
+  // Auth mode: if no Bearer, createdBy is required
   const authHeader = req.headers.get("authorization") ?? "";
   const hasBearer = authHeader.toLowerCase().startsWith("bearer ");
   if (!hasBearer && !body.createdBy) {
@@ -43,7 +46,8 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
   };
 
   const rpcArgs: Record<string, unknown> = { p_template: payload };
-  if (!(hasBearer && ANON_KEY)) rpcArgs.p_created_by = body.createdBy!;
+  // If you have a valid JWT (Bearer), SQL can use auth.uid(); otherwise use createdBy.
+  if (!hasBearer) rpcArgs.p_created_by = body.createdBy!;
 
   const { data: rpcData, error: rpcErr } = await rpcCreateScorecardTemplate(rpcArgs);
   if (rpcErr || !rpcData?.length) {
@@ -63,4 +67,32 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
 
   const result = rpcData[0];
   return json({ ok: true, templateId: result.template_id }, origin, 201);
+}
+
+// ---- List Templates ----
+export async function handleScorecardsList(req: Request, origin: string | null) {
+  if (req.method !== "GET") return badRequest("Method not allowed", origin);
+
+  const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  const sport_id = (url.searchParams.get("sport_id") ?? "").trim() || undefined;
+  const q = (url.searchParams.get("q") ?? "").trim() || undefined;
+
+  const limitRaw = url.searchParams.get("limit");
+  const offsetRaw = url.searchParams.get("offset");
+  const limit = Math.min(Math.max(parseInt(limitRaw ?? "10", 10) || 10, 1), 200);
+  const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
+
+  if (!org_id) return badRequest("org_id (UUID) is required", origin);
+
+  const { data, count, error } = await listScorecardTemplates({
+    org_id,
+    sport_id,
+    q,
+    limit,
+    offset,
+  });
+
+  if (error) return serverError(error.message, origin);
+  return json({ ok: true, count, items: data ?? [] }, origin, 200);
 }

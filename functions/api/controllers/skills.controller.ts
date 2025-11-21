@@ -1,5 +1,5 @@
 import { badRequest, json, serverError } from "../utils/responses.ts";
-import { listSkills } from "../services/skills.ts";
+import { listSkills } from "../services/skills.service.ts";
 import { isUuid } from "../utils/uuid.ts";
 
 export async function handleSkillsList(req: Request, origin: string | null) {

@@ -1,7 +1,7 @@
 import { SignUpSchema } from "../schemas/schemas.ts";
 import { json, badRequest, conflict, serverError } from "../utils/responses.ts";
 import { sbAdmin } from "../services/supabase.ts";
-import { rpcRegisterAthlete, rpcRegisterCoach, rpcRegisterParent } from "../services/signup.ts";
+import { rpcRegisterAthlete, rpcRegisterCoach, rpcRegisterParent } from "../services/signup.service..ts";
 
 const ALLOWED_POS = ["attack", "midfield", "defense", "faceoff", "goalie"] as const;
 type AllowedPos = (typeof ALLOWED_POS)[number];
