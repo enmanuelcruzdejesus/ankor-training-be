@@ -3,6 +3,7 @@ import { Router } from "./router.ts";
 import {
   handleScorecardsCreateTemplate,
   handleScorecardsList,
+  handleScorecardCategoriesByTemplate
 } from "../controllers/scorecard.controller.ts";
 
 export function createScorecardsRouter(): Router {
@@ -13,6 +14,10 @@ export function createScorecardsRouter(): Router {
 
   // GET /api/scorecard/list
   router.add("GET", "list", handleScorecardsList);
+
+   router.add("GET", "categories", handleScorecardCategoriesByTemplate);
+
+  
 
   return router;
 }

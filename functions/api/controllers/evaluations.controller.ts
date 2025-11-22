@@ -1,15 +1,18 @@
-// src/controllers/evaluationsController.ts
 
 import {
   EvaluationInput,
   EvaluationItemInput,
 } from "../schemas/evaluations.ts";
-import { rpcBulkCreateEvaluations } from "../services/evaluations.service.ts";
+import {
+  rpcBulkCreateEvaluations,
+  listEvaluations,
+} from "../services/evaluations.service.ts";
 import {
   badRequest,
   created,
   internalError,
   methodNotAllowed,
+  json,
 } from "../utils/http.ts";
 
 /**
@@ -159,6 +162,39 @@ export async function bulkCreateEvaluationsController(
     });
   } catch (err) {
     console.error("[bulkCreateEvaluationsController] error", err);
+    return internalError(err);
+  }
+}
+
+
+/**
+ * GET /api/evaluations/list
+ * Returns ONLY evaluations
+ */
+export async function handleEvaluationsList(
+  req: Request,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const { data, error } = await listEvaluations();
+
+    if (error) {
+      console.error("[handleEvaluationsList] list error", error);
+      return internalError(error);
+    }
+
+    const evaluations = data ?? [];
+
+    return json(200, {
+      ok: true,
+      count: evaluations.length,
+      data: evaluations,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationsList] error", err);
     return internalError(err);
   }
 }

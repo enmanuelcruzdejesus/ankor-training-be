@@ -1,8 +1,8 @@
 // supabase/functions/_shared/controllers/scorecards.ts
 import { ScorecardTemplateCreateSchema } from "../schemas/schemas.ts";
-import { badRequest, json, serverError } from "../utils/responses.ts";
-import { rpcCreateScorecardTemplate, listScorecardTemplates } from "../services/scorecards.service.ts";
-import { ANON_KEY } from "../config/env.ts";
+import { badRequest, json, serverError} from "../utils/responses.ts";
+import { rpcCreateScorecardTemplate, listScorecardTemplates,listScorecardCategoriesByTemplate } from "../services/scorecards.service.ts";
+
 
 // ---- Create Template ----
 export async function handleScorecardsCreateTemplate(req: Request, origin: string | null) {
@@ -94,5 +94,41 @@ export async function handleScorecardsList(req: Request, origin: string | null) 
   });
 
   if (error) return serverError(error.message, origin);
+  return json({ ok: true, count, items: data ?? [] }, origin, 200);
+}
+
+/**
+ * GET /api/scorecard/categories?scorecard_template_id=<UUID>
+ */
+export async function handleScorecardCategoriesByTemplate(
+  req: Request,
+  origin: string | null,
+) {
+  if (req.method !== "GET") return badRequest("Method not allowed", origin);
+
+  const url = new URL(req.url);
+  const scorecard_template_id =
+    (url.searchParams.get("scorecard_template_id") ?? "").trim();
+
+  const limitRaw = url.searchParams.get("limit");
+  const offsetRaw = url.searchParams.get("offset");
+  const limit = Math.min(
+    Math.max(parseInt(limitRaw ?? "100", 10) || 100, 1),
+    500,
+  );
+  const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
+
+  if (!scorecard_template_id) {
+    return badRequest("scorecard_template_id (UUID) is required", origin);
+  }
+
+  const { data, count, error } = await listScorecardCategoriesByTemplate({
+    scorecard_template_id,
+    limit,
+    offset,
+  });
+
+  if (error) return serverError(error.message, origin);
+
   return json({ ok: true, count, items: data ?? [] }, origin, 200);
 }

@@ -1,6 +1,8 @@
-// src/routes/evaluations.router.ts
 import { Router } from "./router.ts";
-import { bulkCreateEvaluationsController } from "../controllers/evaluations.controller.ts";
+import {
+  bulkCreateEvaluationsController,
+  handleEvaluationsList,
+} from "../controllers/evaluations.controller.ts";
 
 export function createEvaluationsRouter(): Router {
   const router = new Router();
@@ -8,9 +10,8 @@ export function createEvaluationsRouter(): Router {
   // POST /api/evaluations/bulk-create
   router.add("POST", "bulk-create", bulkCreateEvaluationsController);
 
-  // Later you can add more:
-  // router.add("GET", "list", handleEvaluationsList);
-  // router.add("GET", ":id", handleEvaluationDetail);
+  // GET /api/evaluations/list
+  router.add("GET", "list", handleEvaluationsList);
 
   return router;
 }

@@ -12,6 +12,15 @@ export type ScorecardTemplateRow = {
   updated_at: string;
 };
 
+export type ScorecardCategory = {
+  id: string;
+  template_id: string;
+  name: string;
+  description: string | null;
+  position: number;
+  created_at: string;
+};
+
 export async function rpcCreateScorecardTemplate(payload: {
   p_template: unknown;
   p_created_by?: string;
@@ -52,4 +61,23 @@ export async function listScorecardTemplates(params: {
   }
 
   return await query; // { data, count, error }
+}
+
+export async function listScorecardCategoriesByTemplate(args: {
+  scorecard_template_id: string;
+  limit: number;
+  offset: number;
+}) {
+  const { scorecard_template_id, limit, offset } = args;
+
+  const { data, error, count } = await sbAdmin!
+    .from("scorecard_categories")
+    .select("id, template_id, name, description, position, created_at", {
+      count: "exact",
+    })
+    .eq("template_id", scorecard_template_id)
+    .order("position", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  return { data, count: count ?? 0, error };
 }
