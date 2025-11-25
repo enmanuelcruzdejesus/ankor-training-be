@@ -1,7 +1,9 @@
 // supabase/functions/_shared/controllers/scorecards.ts
 import { ScorecardTemplateCreateSchema } from "../schemas/schemas.ts";
 import { badRequest, json, serverError} from "../utils/responses.ts";
-import { rpcCreateScorecardTemplate, listScorecardTemplates,listScorecardCategoriesByTemplate } from "../services/scorecards.service.ts";
+import { rpcCreateScorecardTemplate, 
+  listScorecardTemplates,listScorecardCategoriesByTemplate, 
+  listScorecardSubskillsByCategory } from "../services/scorecards.service.ts";
 
 
 // ---- Create Template ----
@@ -124,6 +126,38 @@ export async function handleScorecardCategoriesByTemplate(
 
   const { data, count, error } = await listScorecardCategoriesByTemplate({
     scorecard_template_id,
+    limit,
+    offset,
+  });
+
+  if (error) return serverError(error.message, origin);
+
+  return json({ ok: true, count, items: data ?? [] }, origin, 200);
+}
+
+export async function handleScorecardSubskillsByCategory(
+  req: Request,
+  origin: string | null,
+) {
+  if (req.method !== "GET") return badRequest("Method not allowed", origin);
+
+  const url = new URL(req.url);
+  const category_id = (url.searchParams.get("category_id") ?? "").trim();
+
+  const limitRaw = url.searchParams.get("limit");
+  const offsetRaw = url.searchParams.get("offset");
+  const limit = Math.min(
+    Math.max(parseInt(limitRaw ?? "100", 10) || 100, 1),
+    500,
+  );
+  const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
+
+  if (!category_id) {
+    return badRequest("category_id (UUID) is required", origin);
+  }
+
+  const { data, count, error } = await listScorecardSubskillsByCategory({
+    category_id,
     limit,
     offset,
   });

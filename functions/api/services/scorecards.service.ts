@@ -81,3 +81,27 @@ export async function listScorecardCategoriesByTemplate(args: {
 
   return { data, count: count ?? 0, error };
 }
+
+export async function listScorecardSubskillsByCategory(args: {
+  category_id: string;
+  limit: number;
+  offset: number;
+}) {
+  const { category_id, limit, offset } = args;
+
+  const { data, error, count } = await sbAdmin!
+    .from("scorecard_subskills")
+    .select(
+      "id, category_id, name, description, position, rating_min, rating_max, created_at",
+      { count: "exact" },
+    )
+    .eq("category_id", category_id)
+    .order("position", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  return {
+    data,
+    count: count ?? 0,
+    error,
+  };
+}

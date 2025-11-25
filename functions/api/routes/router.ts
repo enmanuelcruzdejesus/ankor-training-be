@@ -1,3 +1,6 @@
+// router.ts
+
+import { allowOrigin, corsHeaders } from "../../_shared/cors.ts";
 
 export type RouteParams = Record<string, string>;
 
@@ -90,15 +93,40 @@ export class Router {
     const normalizedPath = normalizePath(path);
     const upperMethod = method.toUpperCase();
 
+    // 🔹 Resolve allowed origin + base CORS headers once per request
+    const resolvedOrigin = allowOrigin(origin);
+    const baseCors = corsHeaders(resolvedOrigin);
+
+    // 🔹 Global preflight handler: allow OPTIONS for any path
+    if (upperMethod === "OPTIONS") {
+      return new Response("ok", {
+        status: 200,
+        headers: baseCors,
+      });
+    }
+
     for (const route of this.routes) {
       if (route.method !== upperMethod) continue;
 
       const params: RouteParams = {};
       if (!matchPath(route.path, normalizedPath, params)) continue;
 
-      return await route.handler(req, origin, params);
+      // Let the route handler generate the base response
+      const res = await route.handler(req, origin, params);
+
+      // Merge existing headers with CORS headers
+      const headers = new Headers(res.headers);
+      for (const [k, v] of Object.entries(baseCors)) {
+        headers.set(k, v);
+      }
+
+      return new Response(res.body, {
+        status: res.status,
+        headers,
+      });
     }
 
+    // No route matched: return null so the caller can decide (usually 404)
     return null;
   }
 }

@@ -1,9 +1,9 @@
-// src/routes/scorecards.router.ts
 import { Router } from "./router.ts";
 import {
   handleScorecardsCreateTemplate,
   handleScorecardsList,
-  handleScorecardCategoriesByTemplate
+  handleScorecardCategoriesByTemplate,
+  handleScorecardSubskillsByCategory
 } from "../controllers/scorecard.controller.ts";
 
 export function createScorecardsRouter(): Router {
@@ -17,7 +17,7 @@ export function createScorecardsRouter(): Router {
 
    router.add("GET", "categories", handleScorecardCategoriesByTemplate);
 
-  
+  router.add("GET", "subskills", handleScorecardSubskillsByCategory);
 
   return router;
 }
