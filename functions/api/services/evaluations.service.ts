@@ -25,8 +25,9 @@ export async function listEvaluations(): Promise<{
   error: unknown;
 }> {
   const { data, error } = await sbAdmin!
-    .from("evaluations")
-    .select(`
+    .from('evaluations')
+    .select(
+      `
       id,
       org_id,
       template_id,
@@ -34,35 +35,47 @@ export async function listEvaluations(): Promise<{
       coach_id,
       notes,
       created_at,
-      athlete:athletes (
+      athlete:athletes!inner (
         id,
-        profile:profiles (
-          first_name,
-          last_name
-        )
+        full_name,
+        first_name,
+        last_name
+      ),
+      template:scorecard_templates!inner (
+        id,
+        name
       )
-    `)
-    .order("created_at", { ascending: false });
+    `,
+    )
+    .order('created_at', { ascending: false })
 
   if (error) {
-    return { data: null, error };
+    return { data: null, error }
   }
 
   const mapped = (data ?? []).map((row: any) => {
-    const { template_id, athlete, ...rest } = row;
+    const { template_id, athlete, template, ...rest } = row
 
-    let athlete_name: string | null = null;
-    if (athlete && athlete.profile) {
-      const { first_name, last_name } = athlete.profile;
-      athlete_name = [first_name, last_name].filter(Boolean).join(" ") || null;
+    // ---- athlete name ----
+    let athlete_name: string | null = null
+    if (athlete) {
+      const { full_name, first_name, last_name } = athlete
+      athlete_name =
+        full_name ||
+        [first_name, last_name].filter(Boolean).join(' ') ||
+        null
     }
+
+    // ---- template name ----
+    const scorecard_template_name: string | null = template?.name ?? null
 
     return {
       ...rest,
       scorecard_template_id: template_id,
+      scorecard_template_name,
       athlete_name,
-    };
-  });
+    }
+  })
 
-  return { data: mapped, error: null };
+  return { data: mapped, error: null }
 }
