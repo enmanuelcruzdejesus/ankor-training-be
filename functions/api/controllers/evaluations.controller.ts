@@ -1,4 +1,3 @@
-
 import {
   EvaluationInput,
   EvaluationItemInput,
@@ -17,6 +16,7 @@ import {
 
 /**
  * Validate a single evaluation item
+ * Now requires athlete_id on each item.
  */
 function parseEvaluationItem(
   raw: unknown,
@@ -31,6 +31,12 @@ function parseEvaluationItem(
 
   const item = raw as Record<string, unknown>;
 
+  if (!item.athlete_id || typeof item.athlete_id !== "string") {
+    throw new Error(
+      `evaluations[${evalIndex}].evaluation_items[${itemIndex}].athlete_id is required (string)`,
+    );
+  }
+
   if (!item.skill_id || typeof item.skill_id !== "string") {
     throw new Error(
       `evaluations[${evalIndex}].evaluation_items[${itemIndex}].skill_id is required (string)`,
@@ -43,7 +49,7 @@ function parseEvaluationItem(
     );
   }
 
-  // Optional: enforce rating range 1–5
+  // Optional: enforce rating range 1–5 (DB constraint was removed, we keep it in app layer)
   if (item.rating < 1 || item.rating > 5) {
     throw new Error(
       `evaluations[${evalIndex}].evaluation_items[${itemIndex}].rating must be between 1 and 5`,
@@ -51,6 +57,7 @@ function parseEvaluationItem(
   }
 
   return {
+    athlete_id: item.athlete_id,
     skill_id: item.skill_id,
     rating: item.rating,
     comments:
@@ -62,6 +69,11 @@ function parseEvaluationItem(
 
 /**
  * Validate a single evaluation
+ *
+ * Note:
+ * - No athlete_id at this level anymore.
+ * - Optional team_id.
+ * - Athletes are per item via evaluation_items[].athlete_id.
  */
 function parseEvaluation(raw: unknown, index: number): EvaluationInput {
   if (!raw || typeof raw !== "object") {
@@ -73,7 +85,6 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
   const requiredFields: Array<keyof EvaluationInput> = [
     "org_id",
     "scorecard_template_id",
-    "athlete_id",
     "coach_id",
     "evaluation_items",
   ];
@@ -84,7 +95,10 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
     }
   }
 
-  if (!Array.isArray(obj.evaluation_items) || obj.evaluation_items.length === 0) {
+  if (
+    !Array.isArray(obj.evaluation_items) ||
+    obj.evaluation_items.length === 0
+  ) {
     throw new Error(
       `evaluations[${index}].evaluation_items must be a non-empty array`,
     );
@@ -95,10 +109,15 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
       parseEvaluationItem(item, index, itemIndex),
   );
 
+  const team_id =
+    obj.team_id === undefined || obj.team_id === null || obj.team_id === ""
+      ? null
+      : String(obj.team_id);
+
   return {
     org_id: String(obj.org_id),
     scorecard_template_id: String(obj.scorecard_template_id),
-    athlete_id: String(obj.athlete_id),
+    team_id,
     coach_id: String(obj.coach_id),
     notes:
       obj.notes === undefined || obj.notes === null ? null : String(obj.notes),
@@ -113,12 +132,20 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
  * {
  *   "evaluations": [
  *     {
- *       org_id,
- *       scorecard_template_id,
- *       athlete_id,
- *       coach_id,
- *       notes?,
- *       evaluation_items: [{ skill_id, rating, comments? }, ...]
+ *       org_id: string;
+ *       scorecard_template_id: string;
+ *       team_id?: string | null;
+ *       coach_id: string;
+ *       notes?: string | null;
+ *       evaluation_items: [
+ *         {
+ *           athlete_id: string;
+ *           skill_id: string;
+ *           rating: number;
+ *           comments?: string | null;
+ *         },
+ *         ...
+ *       ];
  *     },
  *     ...
  *   ]
@@ -138,18 +165,16 @@ export async function bulkCreateEvaluationsController(
       return badRequest("Body must contain an 'evaluations' array.");
     }
 
-    // Validate + normalize payload
+    // ✅ Validate + normalize payload into EvaluationInput[]
     const evaluations: EvaluationInput[] = body.evaluations.map(
       (rawEval: unknown, index: number) => parseEvaluation(rawEval, index),
     );
 
-    // 🔁 Call RPC service instead of direct inserts
+    // 🔁 Call RPC service (evaluations_bulk_create_tx)
     const { data, error } = await rpcBulkCreateEvaluations({ evaluations });
 
     if (error) {
       console.error("[bulkCreateEvaluationsController] rpc error", error);
-
-      // Optional: you could inspect the error here and return 400 for FK violations, etc.
       return internalError(error);
     }
 

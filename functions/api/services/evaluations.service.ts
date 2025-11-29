@@ -4,7 +4,6 @@ import {
   EvaluationWithItems,
 } from "../schemas/evaluations.ts";
 
-
 export async function rpcBulkCreateEvaluations(args: {
   evaluations: EvaluationInput[];
 }): Promise<{ data: EvaluationWithItems[] | null; error: unknown }> {
@@ -13,9 +12,44 @@ export async function rpcBulkCreateEvaluations(args: {
     args,
   );
 
+  if (error) {
+    return { data: null, error };
+  }
+
+  const mapped: EvaluationWithItems[] | null = (data as any[] | null)?.map(
+    (row: any) => {
+      const {
+        template_id,
+        teams_id,
+        evaluation_items,
+        // keep everything else (id, org_id, coach_id, notes, created_at, sport_id, etc.)
+        ...rest
+      } = row;
+
+      const mappedItems =
+        (evaluation_items as any[] | undefined)?.map((item: any) => {
+          const { subskill_id, comment, ...itemRest } = item;
+          return {
+            ...itemRest,
+            // DB → TS schema mapping
+            skill_id: subskill_id,
+            comments: comment,
+          };
+        }) ?? [];
+
+      return {
+        ...rest,
+        // DB → TS schema mapping
+        scorecard_template_id: template_id,
+        team_id: teams_id,
+        evaluation_items: mappedItems,
+      } as EvaluationWithItems;
+    },
+  ) ?? null;
+
   return {
-    data: data as EvaluationWithItems[] | null,
-    error,
+    data: mapped,
+    error: null,
   };
 }
 
@@ -31,15 +65,13 @@ export async function listEvaluations(): Promise<{
       id,
       org_id,
       template_id,
-      athlete_id,
+      teams_id,
       coach_id,
       notes,
       created_at,
-      athlete:athletes!inner (
+      team:teams!inner (
         id,
-        full_name,
-        first_name,
-        last_name
+        name
       ),
       template:scorecard_templates!inner (
         id,
@@ -54,17 +86,10 @@ export async function listEvaluations(): Promise<{
   }
 
   const mapped = (data ?? []).map((row: any) => {
-    const { template_id, athlete, template, ...rest } = row
+    const { template_id, team, template, ...rest } = row
 
-    // ---- athlete name ----
-    let athlete_name: string | null = null
-    if (athlete) {
-      const { full_name, first_name, last_name } = athlete
-      athlete_name =
-        full_name ||
-        [first_name, last_name].filter(Boolean).join(' ') ||
-        null
-    }
+    // ---- team name ----
+    const team_name: string | null = team?.name ?? null
 
     // ---- template name ----
     const scorecard_template_name: string | null = template?.name ?? null
@@ -73,7 +98,7 @@ export async function listEvaluations(): Promise<{
       ...rest,
       scorecard_template_id: template_id,
       scorecard_template_name,
-      athlete_name,
+      team_name,
     }
   })
 
