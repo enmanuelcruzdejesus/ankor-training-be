@@ -13,6 +13,9 @@ import {
   methodNotAllowed,
   json,
 } from "../utils/http.ts";
+import { getEvaluationById} from "../services/evaluations.service.ts";
+import { EvaluationDetailDto } from "../dtos/evaluations.dto.ts";
+import { jsonResponse } from "../utils/http.ts";
 
 /**
  * Validate a single evaluation item
@@ -221,5 +224,53 @@ export async function handleEvaluationsList(
   } catch (err) {
     console.error("[handleEvaluationsList] error", err);
     return internalError(err);
+  }
+}
+
+
+// Handler for GET /api/evaluations/eval/:id
+export async function handleEvaluationById(
+  req: Request,
+  params?: { id?: string },
+): Promise<Response> {
+  // Prefer path params (eval/:id)
+  let id = params?.id;
+
+  // Fallback: derive from URL if params are not provided
+  if (!id) {
+    const url = new URL(req.url);
+    const segments = url.pathname.split("/").filter(Boolean);
+    // .../api/evaluations/eval/:id -> last segment is :id
+    id = segments[segments.length - 1];
+  }
+
+  if (!id) {
+    return jsonResponse(
+      { ok: false, error: "Missing 'id' path parameter" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const evaluation: EvaluationDetailDto | null =
+      await getEvaluationById(id);
+
+    if (!evaluation) {
+      return jsonResponse(
+        { ok: false, error: "Evaluation not found" },
+        { status: 404 },
+      );
+    }
+
+    return jsonResponse(
+      { ok: true, evaluation },
+      { status: 200 },
+    );
+  } catch (err) {
+    console.error("[handleEvaluationById] Unexpected error", err);
+    return jsonResponse(
+      { ok: false, error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

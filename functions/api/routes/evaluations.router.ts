@@ -2,6 +2,7 @@ import { Router } from "./router.ts";
 import {
   bulkCreateEvaluationsController,
   handleEvaluationsList,
+  handleEvaluationById,
 } from "../controllers/evaluations.controller.ts";
 
 export function createEvaluationsRouter(): Router {
@@ -12,6 +13,10 @@ export function createEvaluationsRouter(): Router {
 
   // GET /api/evaluations/list
   router.add("GET", "list", handleEvaluationsList);
+
+
+  // NEW: GET /api/evaluations/eval/:id
+  router.add("GET", "eval/:id", handleEvaluationById);
 
   return router;
 }

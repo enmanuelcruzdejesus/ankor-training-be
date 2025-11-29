@@ -3,6 +3,10 @@ import {
   EvaluationInput,
   EvaluationWithItems,
 } from "../schemas/evaluations.ts";
+import {
+  EvaluationDetailDto,
+  toEvaluationDetailDto,
+} from "../dtos/evaluations.dto.ts";
 
 export async function rpcBulkCreateEvaluations(args: {
   evaluations: EvaluationInput[];
@@ -103,4 +107,68 @@ export async function listEvaluations(): Promise<{
   })
 
   return { data: mapped, error: null }
+}
+
+export async function getEvaluationById(
+  evaluationId: string,
+): Promise<EvaluationDetailDto | null> {
+  if (!sbAdmin) {
+    throw new Error("Supabase admin client is not configured");
+  }
+
+  const { data, error } = await sbAdmin
+    .from("evaluations")
+    .select(
+      `
+      id,
+      org_id,
+      template_id,
+      coach_id,
+      teams_id,
+      notes,
+      created_at,
+      teams:teams_id (
+        id,
+        name
+      ),
+      scorecard_templates:template_id (
+        id,
+        name,
+        scorecard_categories (
+          id,
+          template_id,
+          name,
+          description,
+          position
+        )
+      ),
+      evaluation_items (
+        id,
+        evaluation_id,
+        athlete_id,
+        subskill_id,
+        rating,
+        comment,
+        created_at,
+        athletes:athlete_id (
+          id,
+          first_name,
+          last_name
+        )
+      )
+    `,
+    )
+    .eq("id", evaluationId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[getEvaluationByIdService] Supabase error", error);
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return toEvaluationDetailDto(data);
 }
