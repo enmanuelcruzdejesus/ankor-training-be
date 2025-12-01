@@ -14,7 +14,8 @@ import {
   json,
 } from "../utils/http.ts";
 import { getEvaluationById} from "../services/evaluations.service.ts";
-import { EvaluationDetailDto } from "../dtos/evaluations.dto.ts";
+import { EvaluationDetailDto ,type EvaluationMatrixUpdateDto } from "../dtos/evaluations.dto.ts";
+import { applyEvaluationMatrixUpdateService } from "../services/evaluations.service.ts";
 import { jsonResponse } from "../utils/http.ts";
 
 /**
@@ -272,5 +273,60 @@ export async function handleEvaluationById(
       { ok: false, error: "Internal server error" },
       { status: 500 },
     );
+  }
+}
+
+
+export async function updateEvaluationMatrixController(
+  req: Request,
+): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    const segments = url.pathname.split("/").filter(Boolean);
+    // /functions/v1/api/evaluations/eval/<EVAL_ID>/matrix
+    // segments = ["functions","v1","api","evaluations","eval","<EVAL_ID>","matrix"]
+    const evaluationId = segments[segments.length - 2]; // ✅ this is the UUID
+
+    if (!evaluationId) {
+      return jsonResponse(
+        { ok: false, error: "Missing evaluation id in path" },
+        { status: 400 },
+      );
+    }
+
+    // Optional: debug log to verify
+    // console.log("evaluationId from path =", evaluationId);
+
+    const body = (await req.json().catch(() => null)) as
+      | EvaluationMatrixUpdateDto
+      | null;
+
+    if (!body || !Array.isArray(body.operations)) {
+      return jsonResponse(
+        { ok: false, error: "Body must include an 'operations' array" },
+        { status: 400 },
+      );
+    }
+
+    if (body.operations.length === 0) {
+      return jsonResponse(
+        { ok: false, error: "'operations' array must not be empty" },
+        { status: 400 },
+      );
+    }
+
+    const payload: EvaluationMatrixUpdateDto = {
+      ...body,
+      evaluation_id: evaluationId, // ✅ use the UUID from path
+    };
+
+    const evaluation = await applyEvaluationMatrixUpdateService(payload);
+
+    return jsonResponse({ ok: true, evaluation }, { status: 200 });
+  } catch (err: any) {
+    console.error("[updateEvaluationMatrixController] error", err);
+    const message =
+      typeof err?.message === "string" ? err.message : "Internal server error";
+    return jsonResponse({ ok: false, error: message }, { status: 500 });
   }
 }

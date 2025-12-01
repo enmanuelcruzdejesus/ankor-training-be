@@ -3,6 +3,7 @@ import {
   bulkCreateEvaluationsController,
   handleEvaluationsList,
   handleEvaluationById,
+  updateEvaluationMatrixController,
 } from "../controllers/evaluations.controller.ts";
 
 export function createEvaluationsRouter(): Router {
@@ -17,6 +18,10 @@ export function createEvaluationsRouter(): Router {
 
   // NEW: GET /api/evaluations/eval/:id
   router.add("GET", "eval/:id", handleEvaluationById);
+
+    // PATCH /api/evaluations/eval/:id/matrix
+  router.add("PATCH", "eval/:id/matrix", updateEvaluationMatrixController); 
+
 
   return router;
 }

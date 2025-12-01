@@ -101,3 +101,44 @@ export function toEvaluationDetailDto(raw: any): EvaluationDetailDto {
     categories,
   };
 }
+
+
+// ---------- Matrix update operations for an evaluation ----------
+
+export type EvaluationMatrixOperationType = "upsert_rating" | "remove_athlete";
+
+export interface EvaluationMatrixUpsertRatingOpDto {
+  type: "upsert_rating";
+  athlete_id: string;
+  subskill_id: string;
+  /**
+   * If rating is null, we will DELETE the evaluation_item for this subskill+athlete.
+   * Otherwise we upsert (insert or update) the row.
+   */
+  rating: number | null;
+  comments?: string | null;
+}
+
+export interface EvaluationMatrixRemoveAthleteOpDto {
+  type: "remove_athlete";
+  athlete_id: string;
+}
+
+export type EvaluationMatrixOperationDto =
+  | EvaluationMatrixUpsertRatingOpDto
+  | EvaluationMatrixRemoveAthleteOpDto;
+
+export interface EvaluationMatrixUpdateDto {
+  /** evaluation we are patching */
+  evaluation_id: string;
+
+  /** Optional header updates (if provided, we patch them) */
+  org_id?: string;
+  template_id?: string;
+  team_id?: string | null;
+  coach_id?: string;
+  notes?: string | null;
+
+  /** Operations to apply to evaluation_items */
+  operations: EvaluationMatrixOperationDto[];
+}
