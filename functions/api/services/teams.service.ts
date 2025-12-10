@@ -99,8 +99,7 @@ export async function getAthletesByTeam(
 ): Promise<{ data: TeamAthlete[] | null; error: unknown }> {
   const { data, error } = await sbAdmin!
     .from("team_athletes")
-    .select(
-      `
+    .select(`
       team_id,
       athlete:athletes (
         id,
@@ -111,10 +110,12 @@ export async function getAthletesByTeam(
         full_name,
         phone,
         graduation_year,
-        cell_number
+        cell_number,
+        athlete_positions!inner (
+          position
+        )
       )
-    `,
-    )
+    `)
     .eq("team_id", teamId)
     .eq("status", "active");
 
@@ -122,18 +123,28 @@ export async function getAthletesByTeam(
     return { data: null, error };
   }
 
-  const mapped: TeamAthlete[] = (data ?? []).map((row: any) => ({
-    team_id: row.team_id,
-    id: row.athlete?.id ?? null,
-    org_id: row.athlete?.org_id ?? null,
-    user_id: row.athlete?.user_id ?? null,
-    first_name: row.athlete?.first_name ?? null,
-    last_name: row.athlete?.last_name ?? null,
-    full_name: row.athlete?.full_name ?? null,
-    phone: row.athlete?.phone ?? null,
-    graduation_year: row.athlete?.graduation_year ?? null,
-    cell_number: row.athlete?.cell_number ?? null,
-  }));
+  const mapped: TeamAthlete[] = (data ?? []).map((row: any) => {
+    const a = row.athlete ?? {};
+
+    const rawPos = a.athlete_positions;
+    const position = Array.isArray(rawPos)
+      ? rawPos[0]?.position ?? null
+      : rawPos?.position ?? null;
+
+    return {
+      team_id: row.team_id,
+      id: a.id ?? null,
+      org_id: a.org_id ?? null,
+      user_id: a.user_id ?? null,
+      first_name: a.first_name ?? null,
+      last_name: a.last_name ?? null,
+      full_name: a.full_name ?? null,
+      phone: a.phone ?? null,
+      graduation_year: a.graduation_year ?? null,
+      cell_number: a.cell_number ?? null,
+      position,
+    };
+  });
 
   return { data: mapped, error: null };
 }
