@@ -5,6 +5,9 @@ import {
 import {
   rpcBulkCreateEvaluations,
   listEvaluations,
+  getEvaluationById,
+  applyEvaluationMatrixUpdateService,
+  submitEvaluation,
 } from "../services/evaluations.service.ts";
 import {
   badRequest,
@@ -13,9 +16,10 @@ import {
   methodNotAllowed,
   json,
 } from "../utils/http.ts";
-import { getEvaluationById} from "../services/evaluations.service.ts";
-import { EvaluationDetailDto ,type EvaluationMatrixUpdateDto } from "../dtos/evaluations.dto.ts";
-import { applyEvaluationMatrixUpdateService } from "../services/evaluations.service.ts";
+import {
+  EvaluationDetailDto,
+  type EvaluationMatrixUpdateDto,
+} from "../dtos/evaluations.dto.ts";
 import { jsonResponse } from "../utils/http.ts";
 
 /**
@@ -131,29 +135,6 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
 
 /**
  * Controller: POST /api/evaluations/bulk-create
- *
- * Body:
- * {
- *   "evaluations": [
- *     {
- *       org_id: string;
- *       scorecard_template_id: string;
- *       team_id?: string | null;
- *       coach_id: string;
- *       notes?: string | null;
- *       evaluation_items: [
- *         {
- *           athlete_id: string;
- *           skill_id: string;
- *           rating: number;
- *           comments?: string | null;
- *         },
- *         ...
- *       ];
- *     },
- *     ...
- *   ]
- * }
  */
 export async function bulkCreateEvaluationsController(
   req: Request,
@@ -195,14 +176,11 @@ export async function bulkCreateEvaluationsController(
   }
 }
 
-
 /**
  * GET /api/evaluations/list
  * Returns ONLY evaluations
  */
-export async function handleEvaluationsList(
-  req: Request,
-): Promise<Response> {
+export async function handleEvaluationsList(req: Request): Promise<Response> {
   try {
     if (req.method !== "GET") {
       return methodNotAllowed(["GET"]);
@@ -228,20 +206,16 @@ export async function handleEvaluationsList(
   }
 }
 
-
 // Handler for GET /api/evaluations/eval/:id
 export async function handleEvaluationById(
   req: Request,
   params?: { id?: string },
 ): Promise<Response> {
-  // Prefer path params (eval/:id)
   let id = params?.id;
 
-  // Fallback: derive from URL if params are not provided
   if (!id) {
     const url = new URL(req.url);
     const segments = url.pathname.split("/").filter(Boolean);
-    // .../api/evaluations/eval/:id -> last segment is :id
     id = segments[segments.length - 1];
   }
 
@@ -253,8 +227,7 @@ export async function handleEvaluationById(
   }
 
   try {
-    const evaluation: EvaluationDetailDto | null =
-      await getEvaluationById(id);
+    const evaluation: EvaluationDetailDto | null = await getEvaluationById(id);
 
     if (!evaluation) {
       return jsonResponse(
@@ -263,10 +236,7 @@ export async function handleEvaluationById(
       );
     }
 
-    return jsonResponse(
-      { ok: true, evaluation },
-      { status: 200 },
-    );
+    return jsonResponse({ ok: true, evaluation }, { status: 200 });
   } catch (err) {
     console.error("[handleEvaluationById] Unexpected error", err);
     return jsonResponse(
@@ -276,16 +246,13 @@ export async function handleEvaluationById(
   }
 }
 
-
 export async function updateEvaluationMatrixController(
   req: Request,
 ): Promise<Response> {
   try {
     const url = new URL(req.url);
     const segments = url.pathname.split("/").filter(Boolean);
-    // /functions/v1/api/evaluations/eval/<EVAL_ID>/matrix
-    // segments = ["functions","v1","api","evaluations","eval","<EVAL_ID>","matrix"]
-    const evaluationId = segments[segments.length - 2]; // ✅ this is the UUID
+    const evaluationId = segments[segments.length - 2]; // ✅ UUID before "matrix"
 
     if (!evaluationId) {
       return jsonResponse(
@@ -293,9 +260,6 @@ export async function updateEvaluationMatrixController(
         { status: 400 },
       );
     }
-
-    // Optional: debug log to verify
-    // console.log("evaluationId from path =", evaluationId);
 
     const body = (await req.json().catch(() => null)) as
       | EvaluationMatrixUpdateDto
@@ -317,7 +281,7 @@ export async function updateEvaluationMatrixController(
 
     const payload: EvaluationMatrixUpdateDto = {
       ...body,
-      evaluation_id: evaluationId, // ✅ use the UUID from path
+      evaluation_id: evaluationId,
     };
 
     const evaluation = await applyEvaluationMatrixUpdateService(payload);
@@ -328,5 +292,66 @@ export async function updateEvaluationMatrixController(
     const message =
       typeof err?.message === "string" ? err.message : "Internal server error";
     return jsonResponse({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/evaluations/eval/:id/submit
+ * Submits an evaluation (currently marks as completed; later can run more steps).
+ */
+export async function handleSubmitEvaluation(
+  req: Request,
+  params?: { id?: string },
+): Promise<Response> {
+  try {
+    if (req.method !== "POST") {
+      return methodNotAllowed(["POST"]);
+    }
+
+    // Prefer params if your router provides them
+    let id = params?.id;
+
+    // Fallback: derive from URL
+    if (!id) {
+      const url = new URL(req.url);
+      const segments = url.pathname.split("/").filter(Boolean);
+
+      // If last segment is "submit", id is previous; otherwise last
+      const last = segments[segments.length - 1];
+      id = last === "submit" ? segments[segments.length - 2] : last;
+    }
+
+    if (!id) {
+      return jsonResponse(
+        { ok: false, error: "Missing 'id' path parameter" },
+        { status: 400 },
+      );
+    }
+
+    const result = await submitEvaluation(id);
+
+    if (!result.ok) {
+      const message =
+        result.error instanceof Error
+          ? result.error.message
+          : "Failed to submit evaluation";
+
+      if (message.toLowerCase().includes("not found")) {
+        return jsonResponse({ ok: false, error: message }, { status: 404 });
+      }
+
+      return jsonResponse({ ok: false, error: message }, { status: 500 });
+    }
+
+    return jsonResponse(
+      { ok: true, data: result.data },
+      { status: 200 },
+    );
+  } catch (err) {
+    console.error("[handleSubmitEvaluation] Unexpected error", err);
+    return jsonResponse(
+      { ok: false, error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

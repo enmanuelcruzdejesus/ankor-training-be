@@ -1,4 +1,4 @@
-// src/dtos/evaluations.dto.ts
+
 
 export interface EvaluationItemDto {
   id: string;
@@ -34,6 +34,7 @@ export interface EvaluationDetailDto {
   coach_id: string;
   teams_id: string | null;
   team_name: string | null;
+  status: string | null;
   notes: string | null;
   created_at: string;
   evaluation_items: EvaluationItemDto[];
@@ -47,7 +48,6 @@ export function toEvaluationDetailDto(raw: any): EvaluationDetailDto {
   const template =
     raw.scorecard_templates ?? raw.template ?? raw.templates ?? null;
 
-  // Collect unique athletes from evaluation_items
   const athleteMap = new Map<string, EvaluationAthleteDto>();
 
   const evaluation_items: EvaluationItemDto[] = (raw.evaluation_items ?? []).map(
@@ -94,6 +94,7 @@ export function toEvaluationDetailDto(raw: any): EvaluationDetailDto {
     coach_id: raw.coach_id,
     teams_id: raw.teams_id ?? null,
     team_name: team?.name ?? null,
+    status: (raw.status ?? "not_started"),
     notes: raw.notes ?? null,
     created_at: raw.created_at,
     evaluation_items,
@@ -101,6 +102,7 @@ export function toEvaluationDetailDto(raw: any): EvaluationDetailDto {
     categories,
   };
 }
+
 
 
 // ---------- Matrix update operations for an evaluation ----------
@@ -111,10 +113,6 @@ export interface EvaluationMatrixUpsertRatingOpDto {
   type: "upsert_rating";
   athlete_id: string;
   subskill_id: string;
-  /**
-   * If rating is null, we will DELETE the evaluation_item for this subskill+athlete.
-   * Otherwise we upsert (insert or update) the row.
-   */
   rating: number | null;
   comments?: string | null;
 }
@@ -129,16 +127,16 @@ export type EvaluationMatrixOperationDto =
   | EvaluationMatrixRemoveAthleteOpDto;
 
 export interface EvaluationMatrixUpdateDto {
-  /** evaluation we are patching */
   evaluation_id: string;
 
-  /** Optional header updates (if provided, we patch them) */
   org_id?: string;
   template_id?: string;
   team_id?: string | null;
   coach_id?: string;
   notes?: string | null;
 
-  /** Operations to apply to evaluation_items */
+  // ✅ NEW (if you want to patch status via the same endpoint)
+  status?: EvaluationStatus;
+
   operations: EvaluationMatrixOperationDto[];
 }

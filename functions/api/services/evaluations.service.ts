@@ -9,6 +9,9 @@ import {
   toEvaluationDetailDto,
 } from "../dtos/evaluations.dto.ts";
 
+type SubmitEvaluationResult =
+  | { ok: true; data: { id: string; status: string } }
+  | { ok: false; error: unknown };
 
 
 export async function rpcBulkCreateEvaluations(args: {
@@ -76,6 +79,7 @@ export async function listEvaluations(): Promise<{
       coach_id,
       notes,
       created_at,
+      status
       team:teams!inner (
         id,
         name
@@ -86,6 +90,7 @@ export async function listEvaluations(): Promise<{
       )
     `,
     )
+    .neq('status', 'completed')
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -93,15 +98,15 @@ export async function listEvaluations(): Promise<{
   }
 
   const mapped = (data ?? []).map((row: any) => {
-    const { template_id, team, template, ...rest } = row
+  const { template_id, team, template, ...rest } = row
 
     // ---- team name ----
-    const team_name: string | null = team?.name ?? null
+  const team_name: string | null = team?.name ?? null
 
     // ---- template name ----
-    const scorecard_template_name: string | null = template?.name ?? null
+  const scorecard_template_name: string | null = template?.name ?? null
 
-    return {
+  return {
       ...rest,
       scorecard_template_id: template_id,
       scorecard_template_name,
@@ -130,6 +135,7 @@ export async function getEvaluationById(
       teams_id,
       notes,
       created_at,
+      status,
       teams:teams_id (
         id,
         name
@@ -175,6 +181,7 @@ export async function getEvaluationById(
 
   return toEvaluationDetailDto(data);
 }
+
 
 export async function applyEvaluationMatrixUpdateService(
   dto: EvaluationMatrixUpdateDto,
@@ -318,3 +325,33 @@ export async function applyEvaluationMatrixUpdateService(
   return updated;
 }
 
+export async function submitEvaluation(
+  evaluationId: string,
+): Promise<SubmitEvaluationResult> {
+  // 1) Update only if it isn't already completed (idempotent)
+  const { data: updated, error: updateErr } = await sbAdmin!
+    .from('evaluations')
+    .update({ status: 'completed' })
+    .eq('id', evaluationId)
+    .in('status', ['not_started', 'in_progress'])
+    .select('id, status');
+
+  if (updateErr) return { ok: false, error: updateErr };
+
+  if (updated && updated.length > 0) {
+    return { ok: true, data: updated[0] };
+  }
+
+  // 2) If nothing updated, fetch existing row (already completed or not found)
+  const { data: existingRows, error: getErr } = await sbAdmin!
+    .from('evaluations')
+    .select('id, status')
+    .eq('id', evaluationId);
+
+  if (getErr) return { ok: false, error: getErr };
+
+  const existing = (existingRows ?? [])[0] ?? null;
+  if (!existing) return { ok: false, error: new Error('Evaluation not found') };
+
+  return { ok: true, data: existing };
+}
