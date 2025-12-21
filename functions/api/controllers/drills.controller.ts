@@ -3,7 +3,12 @@ import {
   normalizeCreateDrillDto,
   DrillListFilterSchema,
 } from "../dtos/drills.dto.ts";
-import { createDrill, listDrills } from "../services/drills.service.ts";
+import {
+  createDrill,
+  listDrillTags,
+  listDrills,
+  listSegments,
+} from "../services/drills.service.ts";
 import {
   badRequest,
   created,
@@ -95,6 +100,60 @@ export async function listDrillsController(req: Request): Promise<Response> {
   if (error) {
     console.error("[listDrillsController] list error", error);
     return internalError(error, "Failed to list drills");
+  }
+
+  return json(200, { ok: true, count, items: data });
+}
+
+export async function listSegmentsController(req: Request): Promise<Response> {
+  if (req.method !== "GET") {
+    return methodNotAllowed(["GET"]);
+  }
+
+  const { data, error } = await listSegments();
+  if (error) {
+    console.error("[listSegmentsController] list error", error);
+    return internalError(error, "Failed to list segments");
+  }
+
+  return json(200, { ok: true, count: data.length, items: data });
+}
+
+export async function listDrillTagsController(req: Request): Promise<Response> {
+  if (req.method !== "GET") {
+    return methodNotAllowed(["GET"]);
+  }
+
+  const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
+  const sport_id_raw = (url.searchParams.get("sport_id") ?? "").trim();
+  if (sport_id_raw && !RE_UUID.test(sport_id_raw)) {
+    return badRequest("sport_id must be a UUID if provided");
+  }
+
+  const q = (url.searchParams.get("q") ?? "").trim();
+  const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+  const rawOffset = Number.parseInt(url.searchParams.get("offset") ?? "", 10);
+  const limit = Number.isFinite(rawLimit)
+    ? Math.min(Math.max(rawLimit, 1), 200)
+    : undefined;
+  const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : undefined;
+
+  const { data, count, error } = await listDrillTags({
+    org_id,
+    sport_id: sport_id_raw || undefined,
+    q: q || undefined,
+    limit,
+    offset,
+  });
+
+  if (error) {
+    console.error("[listDrillTagsController] list error", error);
+    return internalError(error, "Failed to list drill tags");
   }
 
   return json(200, { ok: true, count, items: data });

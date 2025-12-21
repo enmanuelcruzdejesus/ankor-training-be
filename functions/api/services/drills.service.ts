@@ -6,6 +6,17 @@ import {
   DrillMediaDto,
 } from "../dtos/drills.dto.ts";
 
+export type DrillSegmentDto = {
+  id: string;
+  name: string | null;
+};
+
+export type DrillTagDto = {
+  id: string;
+  title: string;
+  category: string | null;
+};
+
 type RpcCreateDrillPayload = {
   p_drill: {
     org_id: string;
@@ -72,6 +83,76 @@ export async function createDrill(dto: CreateDrillDto): Promise<{
   }
 
   return { data: data ?? null, error: null };
+}
+
+export async function listSegments(): Promise<{
+  data: DrillSegmentDto[];
+  error: unknown;
+}> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], error: new Error("Supabase client not initialized") };
+  }
+
+  const { data, error } = await client
+    .from("segments")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error) {
+    return { data: [], error };
+  }
+
+  const segments: DrillSegmentDto[] = (data ?? []).map((row: any) => ({
+    id: row.id,
+    name: row.name ?? null,
+  }));
+
+  return { data: segments, error: null };
+}
+
+export async function listDrillTags(params: {
+  org_id: string;
+  sport_id?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: DrillTagDto[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, sport_id, q, limit = 50, offset = 0 } = params;
+
+  let query = client
+    .from("skills")
+    .select("id, title, category", { count: "exact" })
+    .eq("org_id", org_id)
+    .order("title", { ascending: true })
+    .range(offset, offset + (limit - 1));
+
+  if (sport_id) {
+    query = query.eq("sport_id", sport_id);
+  }
+
+  if (q?.trim()) {
+    query = query.or(`title.ilike.%${q}%,category.ilike.%${q}%`);
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const tags: DrillTagDto[] = (data ?? []).map((row: any) => ({
+    id: row.id,
+    title: typeof row.title === "string" ? row.title : "",
+    category: row.category ?? null,
+  }));
+
+  return { data: tags, count: count ?? tags.length, error: null };
 }
 
 export async function listDrills(
