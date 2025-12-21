@@ -16,6 +16,7 @@ import { createOrgRouter } from "./routes/org.router.ts";
 import { createSkillsRouter } from "./routes/skills.router.ts";
 import { createEvaluationsRouter } from "./routes/evaluations.router.ts";
 import { createTeamsRouter } from "./routes/teams.router.ts"; 
+import { createDrillsRouter } from "./routes/drills.router.ts";
 
 const router = new Router();
 
@@ -26,6 +27,7 @@ router.use("scorecard", createScorecardsRouter());
 router.use("skills", createSkillsRouter());
 router.use("teams", createTeamsRouter()); 
 router.use("evaluations", createEvaluationsRouter());
+router.use("drills", createDrillsRouter());
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin") ?? "*";
