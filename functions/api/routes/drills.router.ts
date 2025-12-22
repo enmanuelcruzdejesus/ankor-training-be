@@ -4,6 +4,7 @@ import {
   listDrillsController,
   listDrillTagsController,
   listSegmentsController,
+  getDrillByIdController,
 } from "../controllers/drills.controller.ts";
 
 export function createDrillsRouter(): Router {
@@ -13,6 +14,7 @@ export function createDrillsRouter(): Router {
   router.add("GET", "list", listDrillsController);
   router.add("GET", "segments", listSegmentsController);
   router.add("GET", "tags", listDrillTagsController);
+  router.add("GET", "by-id", getDrillByIdController);
 
   return router;
 }

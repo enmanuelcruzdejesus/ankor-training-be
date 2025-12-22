@@ -43,8 +43,12 @@ export const DrillListFilterSchema = z.object({
   min_players: z.number({ coerce: true }).int().min(0).optional().nullable(),
   max_players: z.number({ coerce: true }).int().min(0).optional().nullable(),
   skill_tag_ids: z.array(uuid()).optional().default([]),
-  limit: z.number({ coerce: true }).int().min(1).max(200).default(50),
-  offset: z.number({ coerce: true }).int().min(0).default(0),
+  limit: z.number({ coerce: true }).int().min(1).max(200).optional().default(50),
+  offset: z.number({ coerce: true }).int().min(0).optional().default(0),
+});
+
+export const GetDrillByIdSchema = z.object({
+  drill_id: uuid(),
 });
 
 export type DrillListFilterInput = z.infer<typeof DrillListFilterSchema>;

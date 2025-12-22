@@ -15,7 +15,7 @@ export function createEvaluationsRouter(): Router {
   router.add("GET", "list", handleEvaluationsList);
   router.add("GET", "eval/:id", handleEvaluationById);
   router.add("PATCH", "eval/:id/matrix", updateEvaluationMatrixController); 
-  router.add("POST", "/:id/submit", handleSubmitEvaluation);
+  router.add("POST", ":id", handleSubmitEvaluation);
 
 
   return router;

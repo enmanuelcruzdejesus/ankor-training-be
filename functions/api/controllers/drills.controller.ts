@@ -2,12 +2,14 @@ import {
   CreateDrillSchema,
   normalizeCreateDrillDto,
   DrillListFilterSchema,
+  GetDrillByIdSchema,
 } from "../dtos/drills.dto.ts";
 import {
   createDrill,
   listDrillTags,
   listDrills,
   listSegments,
+  getDrillById,
 } from "../services/drills.service.ts";
 import {
   badRequest,
@@ -17,6 +19,14 @@ import {
   json,
 } from "../utils/http.ts";
 import { RE_UUID } from "../utils/uuid.ts";
+
+function qp(url: URL, key: string): string | undefined {
+  const v = url.searchParams.get(key);
+  const trimmed = v?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+
 
 export async function createDrillController(req: Request): Promise<Response> {
   if (req.method !== "POST") {
@@ -84,8 +94,8 @@ export async function listDrillsController(req: Request): Promise<Response> {
     skill_tag_ids: parseCommaList(url.searchParams.get("skill_tags"), (s) =>
       RE_UUID.test(s)
     ),
-    limit: url.searchParams.get("limit"),
-    offset: url.searchParams.get("offset"),
+    limit: qp(url, "limit"),
+    offset: qp(url, "offset"),
   };
 
   const parsed = DrillListFilterSchema.safeParse(rawFilters);
@@ -157,4 +167,28 @@ export async function listDrillTagsController(req: Request): Promise<Response> {
   }
 
   return json(200, { ok: true, count, items: data });
+}
+
+export async function getDrillByIdController(req: Request): Promise<Response> {
+  if (req.method !== "GET") {
+    return methodNotAllowed(["GET"]);
+  }
+
+  const url = new URL(req.url);
+  const drill_id = (url.searchParams.get("drill_id") ?? "").trim();
+
+  const parsed = GetDrillByIdSchema.safeParse({ drill_id });
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const { data, error } = await getDrillById(parsed.data.drill_id);
+
+  if (error) {
+    console.error("[getDrillByIdController] Error fetching drill", error);
+    return internalError(error, "Failed to fetch drill");
+  }
+
+  return json({ ok: true, drill: data });
 }

@@ -13,8 +13,7 @@ export type DrillSegmentDto = {
 
 export type DrillTagDto = {
   id: string;
-  title: string;
-  category: string | null;
+  name: string;
 };
 
 type RpcCreateDrillPayload = {
@@ -126,10 +125,10 @@ export async function listDrillTags(params: {
   const { org_id, sport_id, q, limit = 50, offset = 0 } = params;
 
   let query = client
-    .from("skills")
-    .select("id, title, category", { count: "exact" })
+    .from("drill_tags")
+    .select("id, name ")
     .eq("org_id", org_id)
-    .order("title", { ascending: true })
+    .order("name", { ascending: true })
     .range(offset, offset + (limit - 1));
 
   if (sport_id) {
@@ -137,7 +136,7 @@ export async function listDrillTags(params: {
   }
 
   if (q?.trim()) {
-    query = query.or(`title.ilike.%${q}%,category.ilike.%${q}%`);
+    query = query.or(`name.ilike.%${q}%`);
   }
 
   const { data, error, count } = await query;
@@ -148,8 +147,7 @@ export async function listDrillTags(params: {
 
   const tags: DrillTagDto[] = (data ?? []).map((row: any) => ({
     id: row.id,
-    title: typeof row.title === "string" ? row.title : "",
-    category: row.category ?? null,
+    name: typeof row.name === "string" ? row.name : "",
   }));
 
   return { data: tags, count: count ?? tags.length, error: null };
@@ -171,12 +169,19 @@ export async function listDrills(
     max_age,
     min_players,
     max_players,
-    skill_tag_ids,
+    skill_tag_ids, // (these are actually tag_ids now)
     limit,
     offset,
   } = filters;
 
   const rangeTo = offset + (limit - 1);
+
+  // IMPORTANT:
+  // - If filtering by tags, embed drill_tag_map with !inner so drills are filtered.
+  // - If not filtering by tags, don't use !inner or you’ll exclude drills with no tags.
+  const tagEmbed = (skill_tag_ids?.length ?? 0) > 0
+    ? "drill_tag_map!inner(tag_id)"
+    : "drill_tag_map(tag_id)";
 
   let query = client
     .from("drills")
@@ -199,7 +204,8 @@ export async function listDrills(
         updated_at,
         segment:segments(id, name),
         drill_media(id, media_type, title, url, thumbnail_url, sort_order),
-        drill_skills(skill_id)
+        drill_skills(skill_id),
+        ${tagEmbed}
       `,
       { count: "exact" },
     )
@@ -207,46 +213,27 @@ export async function listDrills(
     .range(offset, rangeTo)
     .order("created_at", { ascending: false });
 
-  if (name) {
-    query = query.ilike("name", `%${name}%`);
-  }
+  if (name) query = query.ilike("name", `%${name}%`);
+  if (segment_ids?.length) query = query.in("segment_id", segment_ids);
 
-  if (segment_ids && segment_ids.length > 0) {
-    query = query.in("segment_id", segment_ids);
-  }
+  if (min_age !== null && min_age !== undefined) query = query.gte("min_age", min_age);
+  if (max_age !== null && max_age !== undefined) query = query.lte("max_age", max_age);
 
-  if (min_age !== null && min_age !== undefined) {
-    query = query.gte("min_age", min_age);
-  }
+  if (min_players !== null && min_players !== undefined) query = query.gte("min_players", min_players);
+  if (max_players !== null && max_players !== undefined) query = query.lte("max_players", max_players);
 
-  if (max_age !== null && max_age !== undefined) {
-    query = query.lte("max_age", max_age);
-  }
-
-  if (min_players !== null && min_players !== undefined) {
-    query = query.gte("min_players", min_players);
-  }
-
-  if (max_players !== null && max_players !== undefined) {
-    query = query.lte("max_players", max_players);
-  }
-
-  if (skill_tag_ids && skill_tag_ids.length > 0) {
-    query = query.in("drill_skills.skill_id", skill_tag_ids);
+  if (skill_tag_ids?.length) {
+    query = query.in("drill_tag_map.tag_id", skill_tag_ids);
   }
 
   const { data, error, count } = await query;
 
-  if (error) {
-    return { data: [], count: 0, error };
-  }
+  if (error) return { data: [], count: 0, error };
 
-  const mapped: DrillListItemDto[] = (data ?? []).map((row: any) =>
-    mapDrillRowToDto(row),
-  );
-
+  const mapped: DrillListItemDto[] = (data ?? []).map((row: any) => mapDrillRowToDto(row));
   return { data: mapped, count: count ?? mapped.length, error: null };
 }
+
 
 function mapDrillRowToDto(row: any): DrillListItemDto {
   const media: DrillMediaDto[] = (row.drill_media ?? []).map((m: any) => ({
@@ -284,4 +271,26 @@ function mapDrillRowToDto(row: any): DrillListItemDto {
     skill_tags,
     media,
   };
+}
+
+export async function getDrillById(drill_id: string): Promise<{
+  data: unknown;
+  error: unknown;
+}> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { data, error } = await client
+    .from("drills")
+    .select("*")
+    .eq("id", drill_id)
+    .single();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  return { data, error: null };
 }
