@@ -1,10 +1,13 @@
 import { sbAdmin } from "./supabase.ts";
 import {
   type CreateDrillDto,
+  type CreateDrillMediaInput,
   type DrillListFilterInput,
   type DrillListItemDto,
+  type DrillMediaUploadInput,
   DrillMediaDto,
 } from "../dtos/drills.dto.ts";
+import { DRILLS_MEDIA_BUCKET } from "../config/env.ts";
 
 export type DrillSegmentDto = {
   id: string;
@@ -14,6 +17,25 @@ export type DrillSegmentDto = {
 export type DrillTagDto = {
   id: string;
   name: string;
+};
+
+export type DrillMediaUploadResult = {
+  bucket: string;
+  path: string;
+  signed_url: string;
+  token: string;
+  public_url: string;
+};
+
+export type DrillMediaRecordDto = {
+  id: string;
+  drill_id: string;
+  type: string;
+  url: string;
+  title: string | null;
+  description: string | null;
+  thumbnail_url: string | null;
+  position: number | null;
 };
 
 type RpcCreateDrillPayload = {
@@ -40,6 +62,130 @@ type RpcCreateDrillPayload = {
   }>;
   p_skill_tags: string[];
 };
+
+const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+  "video/mp4": ".mp4",
+  "video/quicktime": ".mov",
+  "video/webm": ".webm",
+  "video/ogg": ".ogv",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "application/pdf": ".pdf",
+};
+
+function sanitizeFileName(name: string): string {
+  const base = name.trim().split(/[\\/]/).pop() ?? "upload";
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return safe.length ? safe : "upload";
+}
+
+function inferExtension(fileName: string, contentType: string): string {
+  const match = fileName.match(/\.([a-z0-9]{1,10})$/i);
+  if (match) {
+    return `.${match[1].toLowerCase()}`;
+  }
+
+  const mapped = EXTENSION_BY_CONTENT_TYPE[contentType.toLowerCase()];
+  return mapped ?? ".bin";
+}
+
+function buildDrillMediaPath(input: {
+  org_id: string;
+  drill_id: string;
+  file_name: string;
+  content_type: string;
+}): string {
+  const safeName = sanitizeFileName(input.file_name);
+  const extension = inferExtension(safeName, input.content_type);
+  const fileId = crypto.randomUUID();
+  return `orgs/${input.org_id}/drills/${input.drill_id}/${fileId}${extension}`;
+}
+
+export async function createDrillMediaUploadUrl(
+  input: DrillMediaUploadInput,
+): Promise<{ data: DrillMediaUploadResult | null; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const path = buildDrillMediaPath(input);
+  const bucket = DRILLS_MEDIA_BUCKET;
+
+  const { data, error } = await client.storage
+    .from(bucket)
+    .createSignedUploadUrl(path);
+
+  if (error || !data?.signedUrl || !data.token) {
+    return { data: null, error: error ?? new Error("Failed to create upload URL") };
+  }
+
+  const publicResult = client.storage.from(bucket).getPublicUrl(path);
+  const public_url = publicResult.data?.publicUrl ?? "";
+
+  return {
+    data: {
+      bucket,
+      path,
+      signed_url: data.signedUrl,
+      token: data.token,
+      public_url,
+    },
+    error: null,
+  };
+}
+
+export async function createDrillMedia(
+  input: CreateDrillMediaInput,
+): Promise<{ data: DrillMediaRecordDto | null; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { drill_id, type, url, title, description, thumbnail_url } = input;
+  let position = input.position ?? null;
+
+  if (position === null || position === undefined) {
+    const { data: lastRow, error: lastError } = await client
+      .from("drill_media")
+      .select("sort_order")
+      .eq("drill_id", drill_id)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastError) {
+      return { data: null, error: lastError };
+    }
+
+    const lastOrder = typeof lastRow?.sort_order === "number"
+      ? lastRow.sort_order
+      : null;
+    position = lastOrder !== null ? lastOrder + 1 : 1;
+  }
+
+  const { data, error } = await client
+    .from("drill_media")
+    .insert({
+      drill_id,
+      media_type: type,
+      url,
+      title: title ?? null,
+      description: description ?? null,
+      thumbnail_url: thumbnail_url ?? null,
+      sort_order: position ?? null,
+    })
+    .select("id, drill_id, media_type, url, title, description, thumbnail_url, sort_order")
+    .single();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  return { data: mapDrillMediaRow(data), error: null };
+}
 
 export async function createDrill(dto: CreateDrillDto): Promise<{
   data: unknown;
@@ -270,6 +416,19 @@ function mapDrillRowToDto(row: any): DrillListItemDto {
       : null,
     skill_tags,
     media,
+  };
+}
+
+function mapDrillMediaRow(row: any): DrillMediaRecordDto {
+  return {
+    id: row.id,
+    drill_id: row.drill_id,
+    type: row.media_type ?? "video",
+    url: row.url,
+    title: row.title ?? null,
+    description: row.description ?? null,
+    thumbnail_url: row.thumbnail_url ?? null,
+    position: row.sort_order ?? null,
   };
 }
 

@@ -1,11 +1,15 @@
 import {
   CreateDrillSchema,
+  CreateDrillMediaSchema,
+  DrillMediaUploadSchema,
   normalizeCreateDrillDto,
   DrillListFilterSchema,
   GetDrillByIdSchema,
 } from "../dtos/drills.dto.ts";
 import {
   createDrill,
+  createDrillMedia,
+  createDrillMediaUploadUrl,
   listDrillTags,
   listDrills,
   listSegments,
@@ -26,7 +30,25 @@ function qp(url: URL, key: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function parseCommaList(
+  value: string | null,
+  validator: (s: string) => boolean,
+): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && validator(s));
+}
 
+function isUploadContentTypeValid(type: string, contentType: string): boolean {
+  const normalized = contentType.toLowerCase();
+
+  if (type === "video") return normalized.startsWith("video/");
+  if (type === "image") return normalized.startsWith("image/");
+  if (type === "document") return normalized.startsWith("application/");
+  return true;
+}
 
 export async function createDrillController(req: Request): Promise<Response> {
   if (req.method !== "POST") {
@@ -57,17 +79,6 @@ export async function createDrillController(req: Request): Promise<Response> {
     Array.isArray(data) && data.length === 1 ? data[0] : data ?? null;
 
   return created({ ok: true, drill });
-}
-
-function parseCommaList(
-  value: string | null,
-  validator: (s: string) => boolean,
-): string[] {
-  if (!value) return [];
-  return value
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s && validator(s));
 }
 
 export async function listDrillsController(req: Request): Promise<Response> {
@@ -191,4 +202,77 @@ export async function getDrillByIdController(req: Request): Promise<Response> {
   }
 
   return json({ ok: true, drill: data });
+}
+
+export async function createDrillMediaUploadUrlController(
+  req: Request,
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return badRequest("Invalid JSON payload");
+  }
+
+  const parsed = DrillMediaUploadSchema.safeParse(raw);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  if (parsed.data.type === "link") {
+    return badRequest("type=link does not support uploads");
+  }
+
+  if (!isUploadContentTypeValid(parsed.data.type, parsed.data.content_type)) {
+    return badRequest(
+      `content_type does not match media type '${parsed.data.type}'`,
+    );
+  }
+
+  const { data, error } = await createDrillMediaUploadUrl(parsed.data);
+  if (error || !data) {
+    console.error("[createDrillMediaUploadUrlController] error", error);
+    return internalError(error, "Failed to create upload URL");
+  }
+
+  const media = {
+    type: parsed.data.type,
+    url: data.public_url,
+    title: parsed.data.title ?? null,
+    description: parsed.data.description ?? null,
+    thumbnail_url: parsed.data.thumbnail_url ?? null,
+    position: parsed.data.position ?? null,
+  };
+
+  return created({ ok: true, upload: data, media });
+}
+
+export async function createDrillMediaController(
+  req: Request,
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return badRequest("Invalid JSON payload");
+  }
+
+  const parsed = CreateDrillMediaSchema.safeParse(raw);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const { data, error } = await createDrillMedia(parsed.data);
+  if (error) {
+    console.error("[createDrillMediaController] error", error);
+    return internalError(error, "Failed to create drill media");
+  }
+
+  return created({ ok: true, media: data });
 }

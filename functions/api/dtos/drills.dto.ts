@@ -9,13 +9,38 @@ const SkillTagInputSchema = z
   .union([uuid(), z.object({ skill_id: uuid() })])
   .transform((value) => (typeof value === "string" ? value : value.skill_id));
 
+const DrillMediaTypeSchema = z.enum(["image", "video", "document", "link"]);
+
 export const DrillMediaSchema = z.object({
-  type: z.enum(["image", "video", "document", "link"]).default("image"),
+  type: DrillMediaTypeSchema.default("image"),
   url: z.string().url("media.url must be a valid URL"),
   title: z.string().trim().max(200).optional().nullable(),
   description: z.string().trim().max(4000).optional().nullable(),
-  thumbnail_url: z.string().url("thumbnail_url must be a valid URL").optional().nullable(),
+  thumbnail_url: z.string()
+    .url("thumbnail_url must be a valid URL")
+    .optional()
+    .nullable(),
   position: z.number({ coerce: true }).int().min(0).optional().nullable(),
+});
+
+export const DrillMediaUploadSchema = z.object({
+  org_id: uuid(),
+  drill_id: uuid(),
+  file_name: z.string().trim().min(1).max(255),
+  content_type: z.string().trim().min(1).max(120),
+  type: DrillMediaTypeSchema.default("video"),
+  title: z.string().trim().max(200).optional().nullable(),
+  description: z.string().trim().max(4000).optional().nullable(),
+  thumbnail_url: z.string()
+    .url("thumbnail_url must be a valid URL")
+    .optional()
+    .nullable(),
+  position: z.number({ coerce: true }).int().min(0).optional().nullable(),
+});
+
+export const CreateDrillMediaSchema = DrillMediaSchema.extend({
+  drill_id: uuid(),
+  type: DrillMediaTypeSchema.default("video"),
 });
 
 export const CreateDrillSchema = z.object({
@@ -76,6 +101,8 @@ export interface DrillListItemDto {
 
 export type DrillMediaDto = z.infer<typeof DrillMediaSchema>;
 export type CreateDrillInput = z.infer<typeof CreateDrillSchema>;
+export type CreateDrillMediaInput = z.infer<typeof CreateDrillMediaSchema>;
+export type DrillMediaUploadInput = z.infer<typeof DrillMediaUploadSchema>;
 
 export type CreateDrillDto = Omit<CreateDrillInput, "skill_tags"> & {
   skill_tags: { skill_id: string }[];
