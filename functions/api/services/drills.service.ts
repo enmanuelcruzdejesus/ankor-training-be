@@ -33,7 +33,6 @@ export type DrillMediaRecordDto = {
   type: string;
   url: string;
   title: string | null;
-  description: string | null;
   thumbnail_url: string | null;
   position: number | null;
 };
@@ -173,11 +172,10 @@ export async function createDrillMedia(
       media_type: type,
       url,
       title: title ?? null,
-      description: description ?? null,
       thumbnail_url: thumbnail_url ?? null,
       sort_order: position ?? null,
     })
-    .select("id, drill_id, media_type, url, title, description, thumbnail_url, sort_order")
+    .select("id, drill_id, media_type, url, title,thumbnail_url,sort_order")
     .single();
 
   if (error) {
@@ -426,7 +424,6 @@ function mapDrillMediaRow(row: any): DrillMediaRecordDto {
     type: row.media_type ?? "video",
     url: row.url,
     title: row.title ?? null,
-    description: row.description ?? null,
     thumbnail_url: row.thumbnail_url ?? null,
     position: row.sort_order ?? null,
   };

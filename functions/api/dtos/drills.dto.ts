@@ -19,8 +19,7 @@ export const DrillMediaSchema = z.object({
   thumbnail_url: z.string()
     .url("thumbnail_url must be a valid URL")
     .optional()
-    .nullable(),
-  position: z.number({ coerce: true }).int().min(0).optional().nullable(),
+    .nullable()
 });
 
 export const DrillMediaUploadSchema = z.object({
