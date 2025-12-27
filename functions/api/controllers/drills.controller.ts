@@ -21,6 +21,7 @@ import {
   internalError,
   methodNotAllowed,
   json,
+  jsonResponse,
 } from "../utils/http.ts";
 import { RE_UUID } from "../utils/uuid.ts";
 
@@ -180,13 +181,24 @@ export async function listDrillTagsController(req: Request): Promise<Response> {
   return json(200, { ok: true, count, items: data });
 }
 
-export async function getDrillByIdController(req: Request): Promise<Response> {
+export async function getDrillByIdController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+): Promise<Response> {
+  
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
   }
 
-  const url = new URL(req.url);
-  const drill_id = (url.searchParams.get("drill_id") ?? "").trim();
+  const drill_id =  params?.id;
+
+  if (!drill_id) {
+        return jsonResponse(
+          { ok: false, error: "Missing 'id' path parameter" },
+          { status: 400 },
+        );
+  }
 
   const parsed = GetDrillByIdSchema.safeParse({ drill_id });
   if (!parsed.success) {
@@ -201,7 +213,7 @@ export async function getDrillByIdController(req: Request): Promise<Response> {
     return internalError(error, "Failed to fetch drill");
   }
 
-  return json({ ok: true, drill: data });
+  return json(200, { ok: true, drill: data });
 }
 
 export async function createDrillMediaUploadUrlController(

@@ -18,7 +18,7 @@ export function createDrillsRouter(): Router {
   router.add("GET", "list", listDrillsController);
   router.add("GET", "segments", listSegmentsController);
   router.add("GET", "tags", listDrillTagsController);
-  router.add("GET", "by-id", getDrillByIdController);
+  router.add("GET", ":id", getDrillByIdController);
 
   return router;
 }

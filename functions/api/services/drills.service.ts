@@ -440,7 +440,11 @@ export async function getDrillById(drill_id: string): Promise<{
 
   const { data, error } = await client
     .from("drills")
-    .select("*")
+    .select(`
+      *,
+      drill_media(title, url, thumbnail_url),
+      drill_tag_map(tag_id, drill_tags!inner(id, name))
+    `)
     .eq("id", drill_id)
     .single();
 
