@@ -49,7 +49,7 @@ export const CreateDrillSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(200),
   description: z.string().trim().max(4000).optional().nullable(),
   instructions: z.string().trim().max(4000).optional().nullable(),
-  difficulty: z.string().trim().max(50).optional().nullable(),
+  level: z.string().trim().max(50).optional().nullable(),
   min_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
   max_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
   duration_seconds: z.number({ coerce: true }).int().positive().optional().nullable(),
@@ -83,7 +83,7 @@ export interface DrillListItemDto {
   segment_id: string | null;
   name: string;
   description: string | null;
-  difficulty: string | null;
+  level: string | null;
   min_players: number | null;
   max_players: number | null;
   min_age: number | null;

@@ -45,7 +45,7 @@ type RpcCreateDrillPayload = {
     name: string;
     description: string | null;
     instructions: string | null;
-    difficulty: string | null;
+    level: string | null;
     min_age: number | null;
     max_age: number | null;
     duration_seconds: number | null;
@@ -202,7 +202,7 @@ export async function createDrill(dto: CreateDrillDto): Promise<{
       name: dto.name.trim(),
       description: dto.description ?? null,
       instructions: dto.instructions ?? null,
-      difficulty: dto.difficulty ?? null,
+      level: dto.level ?? null,
       min_age: dto.min_age ?? null,
       max_age: dto.max_age ?? null,
       duration_seconds: dto.duration_seconds ?? null,
@@ -336,7 +336,7 @@ export async function listDrills(
         segment_id,
         name,
         description,
-        difficulty,
+        level,
         min_players,
         max_players,
         min_age,
@@ -399,7 +399,7 @@ function mapDrillRowToDto(row: any): DrillListItemDto {
     segment_id: row.segment_id ?? null,
     name: row.name,
     description: row.description ?? null,
-    difficulty: row.difficulty ?? null,
+    level: row.level ?? null,
     min_players: row.min_players ?? null,
     max_players: row.max_players ?? null,
     min_age: row.min_age ?? null,
