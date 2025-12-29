@@ -308,6 +308,7 @@ export async function listDrills(
   const {
     org_id,
     name,
+    levels,
     segment_ids,
     min_age,
     max_age,
@@ -359,6 +360,7 @@ export async function listDrills(
 
   if (name) query = query.ilike("name", `%${name}%`);
   if (segment_ids?.length) query = query.in("segment_id", segment_ids);
+  if (levels?.length) query = query.in("level", levels);
 
   if (min_age !== null && min_age !== undefined) query = query.gte("min_age", min_age);
   if (max_age !== null && max_age !== undefined) query = query.lte("max_age", max_age);

@@ -96,6 +96,7 @@ export async function listDrillsController(req: Request): Promise<Response> {
   const rawFilters = {
     org_id,
     name: (url.searchParams.get("name") ?? "").trim() || undefined,
+    levels: parseCommaList(url.searchParams.get("levels"), (s) => s.length > 0),
     segment_ids: parseCommaList(url.searchParams.get("segment_ids"), (s) =>
       RE_UUID.test(s)
     ),

@@ -61,6 +61,7 @@ export const CreateDrillSchema = z.object({
 export const DrillListFilterSchema = z.object({
   org_id: uuid(),
   name: z.string().trim().min(1).optional(),
+  levels: z.array(z.string().trim().min(1).max(50)).optional().default([]),
   segment_ids: z.array(uuid()).optional().default([]),
   min_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
   max_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
