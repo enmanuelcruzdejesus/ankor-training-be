@@ -76,6 +76,10 @@ export const GetDrillByIdSchema = z.object({
   drill_id: uuid(),
 });
 
+export const GetDrillMediaByIdSchema = z.object({
+  media_id: uuid(),
+});
+
 export type DrillListFilterInput = z.infer<typeof DrillListFilterSchema>;
 
 export interface DrillListItemDto {

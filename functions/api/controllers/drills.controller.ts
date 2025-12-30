@@ -10,6 +10,7 @@ import {
   createDrill,
   createDrillMedia,
   createDrillMediaUploadUrl,
+  getDrillMediaPlaybackUrl,
   listDrillTags,
   listDrills,
   listSegments,
@@ -215,6 +216,57 @@ export async function getDrillByIdController(
   }
 
   return json(200, { ok: true, drill: data });
+}
+
+export async function getDrillMediaPlaybackController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+): Promise<Response> {
+  if (req.method !== "GET") {
+    return methodNotAllowed(["GET"]);
+  }
+
+  const drill_id = params?.drill_id;
+  if (!drill_id) {
+    return jsonResponse(
+      { ok: false, error: "Missing 'drill_id' path parameter" },
+      { status: 400 },
+    );
+  }
+
+  const parsed = GetDrillByIdSchema.safeParse({ drill_id });
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const url = new URL(req.url);
+  const rawExpires = url.searchParams.get("expires_in");
+  const parsedExpires = rawExpires ? Number.parseInt(rawExpires, 10) : NaN;
+  const expires_in = Number.isFinite(parsedExpires)
+    ? Math.min(Math.max(parsedExpires, 60), 60 * 60 * 24)
+    : 60 * 60;
+
+  const { data, error } = await getDrillMediaPlaybackUrl(
+    parsed.data.drill_id,
+    expires_in,
+  );
+
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("not found")) {
+      return jsonResponse({ ok: false, error: "Drill media not found" }, { status: 404 });
+    }
+    return internalError(error, "Failed to create playback URL");
+  }
+
+  return json(200, {
+    ok: true,
+    media: data!.media,
+    play_url: data!.play_url,
+    expires_in: data!.expires_in,
+  });
 }
 
 export async function createDrillMediaUploadUrlController(

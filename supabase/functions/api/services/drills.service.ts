@@ -37,6 +37,12 @@ export type DrillMediaRecordDto = {
   position: number | null;
 };
 
+export type DrillMediaPlaybackDto = {
+  media: DrillMediaRecordDto;
+  play_url: string;
+  expires_in: number | null;
+};
+
 type RpcCreateDrillPayload = {
   p_drill: {
     org_id: string;
@@ -101,6 +107,31 @@ function buildDrillMediaPath(input: {
   return `orgs/${input.org_id}/drills/${input.drill_id}/${fileId}${extension}`;
 }
 
+function parseStorageObjectUrl(
+  value: string,
+): { bucket: string; path: string } | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+
+  const prefix = "/storage/v1/object/";
+  if (!url.pathname.startsWith(prefix)) return null;
+
+  const rest = url.pathname.slice(prefix.length);
+  const parts = rest.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const offset = (parts[0] === "public" || parts[0] === "sign") ? 1 : 0;
+  if (parts.length - offset < 2) return null;
+
+  const bucket = parts[offset];
+  const path = parts.slice(offset + 1).join("/");
+  return { bucket, path };
+}
+
 export async function createDrillMediaUploadUrl(
   input: DrillMediaUploadInput,
 ): Promise<{ data: DrillMediaUploadResult | null; error: unknown }> {
@@ -130,6 +161,67 @@ export async function createDrillMediaUploadUrl(
       signed_url: data.signedUrl,
       token: data.token,
       public_url,
+    },
+    error: null,
+  };
+}
+
+export async function getDrillMediaPlaybackUrl(
+  drill_id: string,
+  expires_in: number,
+): Promise<{ data: DrillMediaPlaybackDto | null; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { data: row, error } = await client
+    .from("drill_media")
+    .select("id, drill_id, media_type, url, title, thumbnail_url, sort_order")
+    .eq("drill_id", drill_id)
+    .eq("media_type", "video")
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  if (!row) {
+    return { data: null, error: new Error("Drill media not found") };
+  }
+
+  const media = mapDrillMediaRow(row);
+  const storageRef = parseStorageObjectUrl(media.url);
+
+  if (!storageRef) {
+    return {
+      data: {
+        media,
+        play_url: media.url,
+        expires_in: null,
+      },
+      error: null,
+    };
+  }
+
+  const { data: signed, error: signErr } = await client.storage
+    .from(storageRef.bucket)
+    .createSignedUrl(storageRef.path, expires_in);
+
+  if (signErr || !signed?.signedUrl) {
+    return {
+      data: null,
+      error: signErr ?? new Error("Failed to create signed URL"),
+    };
+  }
+
+  return {
+    data: {
+      media,
+      play_url: signed.signedUrl,
+      expires_in,
     },
     error: null,
   };

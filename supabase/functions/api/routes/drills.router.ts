@@ -3,6 +3,7 @@ import {
   createDrillController,
   createDrillMediaController,
   createDrillMediaUploadUrlController,
+  getDrillMediaPlaybackController,
   listDrillsController,
   listDrillTagsController,
   listSegmentsController,
@@ -15,6 +16,7 @@ export function createDrillsRouter(): Router {
   router.add("POST", "", createDrillController);
   router.add("POST", "media/upload-url", createDrillMediaUploadUrlController);
   router.add("POST", "media", createDrillMediaController);
+  router.add("GET", "media/:drill_id/play", getDrillMediaPlaybackController);
   router.add("GET", "list", listDrillsController);
   router.add("GET", "segments", listSegmentsController);
   router.add("GET", "tags", listDrillTagsController);
