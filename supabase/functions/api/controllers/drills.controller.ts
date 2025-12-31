@@ -5,6 +5,7 @@ import {
   normalizeCreateDrillDto,
   DrillListFilterSchema,
   GetDrillByIdSchema,
+  UpdateDrillSchema,
 } from "../dtos/drills.dto.ts";
 import {
   createDrill,
@@ -15,6 +16,7 @@ import {
   listDrills,
   listSegments,
   getDrillById,
+  updateDrill,
 } from "../services/drills.service.ts";
 import {
   badRequest,
@@ -213,6 +215,62 @@ export async function getDrillByIdController(
   if (error) {
     console.error("[getDrillByIdController] Error fetching drill", error);
     return internalError(error, "Failed to fetch drill");
+  }
+
+  return json(200, { ok: true, drill: data });
+}
+
+export async function updateDrillController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+): Promise<Response> {
+  if (req.method !== "PATCH") {
+    return methodNotAllowed(["PATCH"]);
+  }
+
+  const drill_id = params?.id;
+  if (!drill_id) {
+    return jsonResponse(
+      { ok: false, error: "Missing 'id' path parameter" },
+      { status: 400 },
+    );
+  }
+
+  const idParsed = GetDrillByIdSchema.safeParse({ drill_id });
+  if (!idParsed.success) {
+    const message = idParsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return badRequest("Invalid JSON payload");
+  }
+
+  const parsed = UpdateDrillSchema.safeParse(raw);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const { add_tag_ids, remove_tag_ids, ...rest } = parsed.data;
+  const hasPatch = Object.values(rest).some((value) => value !== undefined);
+  const hasTagOps =
+    (add_tag_ids?.length ?? 0) > 0 || (remove_tag_ids?.length ?? 0) > 0;
+
+  if (!hasPatch && !hasTagOps) {
+    return badRequest("No updates provided");
+  }
+
+  const { data, error } = await updateDrill(drill_id, parsed.data);
+
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("not found")) {
+      return jsonResponse({ ok: false, error: "Drill not found" }, { status: 404 });
+    }
+    return internalError(error, "Failed to update drill");
   }
 
   return json(200, { ok: true, drill: data });

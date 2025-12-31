@@ -2,71 +2,19 @@ import { sbAdmin } from "./supabase.ts";
 import {
   type CreateDrillDto,
   type CreateDrillMediaInput,
+  type DrillDto,
   type DrillListFilterInput,
-  type DrillListItemDto,
+  type DrillMediaDto,
+  type DrillMediaPlaybackDto,
+  type DrillMediaRecordDto,
   type DrillMediaUploadInput,
-  DrillMediaDto,
+  type DrillMediaUploadResult,
+  type DrillSegmentDto,
+  type DrillTagDto,
+  type RpcCreateDrillPayload,
+  type UpdateDrillInput,
 } from "../dtos/drills.dto.ts";
 import { DRILLS_MEDIA_BUCKET } from "../config/env.ts";
-
-export type DrillSegmentDto = {
-  id: string;
-  name: string | null;
-};
-
-export type DrillTagDto = {
-  id: string;
-  name: string;
-};
-
-export type DrillMediaUploadResult = {
-  bucket: string;
-  path: string;
-  signed_url: string;
-  token: string;
-  public_url: string;
-};
-
-export type DrillMediaRecordDto = {
-  id: string;
-  drill_id: string;
-  type: string;
-  url: string;
-  title: string | null;
-  thumbnail_url: string | null;
-  position: number | null;
-};
-
-export type DrillMediaPlaybackDto = {
-  media: DrillMediaRecordDto;
-  play_url: string;
-  expires_in: number | null;
-};
-
-type RpcCreateDrillPayload = {
-  p_drill: {
-    org_id: string;
-    segment_id: string | null;
-    sport_id: string | null;
-    name: string;
-    description: string | null;
-    instructions: string | null;
-    level: string | null;
-    min_age: number | null;
-    max_age: number | null;
-    duration_seconds: number | null;
-    created_by: string | null;
-  };
-  p_media: Array<{
-    type: string;
-    url: string;
-    title: string | null;
-    description: string | null;
-    thumbnail_url: string | null;
-    position: number | null;
-  }>;
-  p_skill_tags: string[];
-};
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   "video/mp4": ".mp4",
@@ -320,6 +268,100 @@ export async function createDrill(dto: CreateDrillDto): Promise<{
   return { data: data ?? null, error: null };
 }
 
+export async function updateDrill(
+  drill_id: string,
+  input: UpdateDrillInput,
+): Promise<{ data: unknown; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.instructions !== undefined) patch.coaching_points = input.instructions;
+  if (input.level !== undefined) patch.level = input.level;
+  if (input.segment_id !== undefined) patch.segment_id = input.segment_id;
+  if (input.min_age !== undefined) patch.min_age = input.min_age;
+  if (input.max_age !== undefined) patch.max_age = input.max_age;
+  if (input.min_players !== undefined) patch.min_players = input.min_players;
+  if (input.max_players !== undefined) patch.max_players = input.max_players;
+  if (input.visibility !== undefined) patch.visibility = input.visibility;
+  if (input.is_archived !== undefined) patch.is_archived = input.is_archived;
+
+  if (input.duration_min !== undefined) {
+    patch.duration_min = input.duration_min;
+  } else if (input.duration_seconds !== undefined) {
+    patch.duration_min = input.duration_seconds === null
+      ? null
+      : Math.ceil(input.duration_seconds / 60);
+  }
+
+  if (Object.keys(patch).length > 0) {
+    const { data, error } = await client
+      .from("drills")
+      .update(patch)
+      .eq("id", drill_id)
+      .select("id");
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    if (!data || data.length === 0) {
+      return { data: null, error: new Error("Drill not found") };
+    }
+  } else {
+    const { data, error } = await client
+      .from("drills")
+      .select("id")
+      .eq("id", drill_id);
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    if (!data || data.length === 0) {
+      return { data: null, error: new Error("Drill not found") };
+    }
+  }
+
+  const addTagIds = Array.from(new Set(input.add_tag_ids ?? []));
+  const removeTagIds = Array.from(new Set(input.remove_tag_ids ?? []));
+  const removeSet = removeTagIds.filter((id) => !addTagIds.includes(id));
+
+  if (removeSet.length > 0) {
+    const { error } = await client
+      .from("drill_tag_map")
+      .delete()
+      .eq("drill_id", drill_id)
+      .in("tag_id", removeSet);
+
+    if (error) {
+      return { data: null, error };
+    }
+  }
+
+  if (addTagIds.length > 0) {
+    const rows = addTagIds.map((tag_id) => ({ drill_id, tag_id }));
+    const { error } = await client
+      .from("drill_tag_map")
+      .upsert(rows, { onConflict: "drill_id,tag_id" });
+
+    if (error) {
+      return { data: null, error };
+    }
+  }
+
+  const { data, error } = await getDrillById(drill_id);
+  if (error) {
+    return { data: null, error };
+  }
+
+  return { data, error: null };
+}
+
 export async function listSegments(): Promise<{
   data: DrillSegmentDto[];
   error: unknown;
@@ -391,7 +433,7 @@ export async function listDrillTags(params: {
 
 export async function listDrills(
   filters: DrillListFilterInput,
-): Promise<{ data: DrillListItemDto[]; count: number; error: unknown }> {
+): Promise<{ data: DrillDto[]; count: number; error: unknown }> {
   const client = sbAdmin;
   if (!client) {
     return { data: [], count: 0, error: new Error("Supabase client not initialized") };
@@ -406,7 +448,7 @@ export async function listDrills(
     max_age,
     min_players,
     max_players,
-    skill_tag_ids, // (these are actually tag_ids now)
+    skill_tag_ids, 
     limit,
     offset,
   } = filters;
@@ -417,8 +459,8 @@ export async function listDrills(
   // - If filtering by tags, embed drill_tag_map with !inner so drills are filtered.
   // - If not filtering by tags, don't use !inner or you’ll exclude drills with no tags.
   const tagEmbed = (skill_tag_ids?.length ?? 0) > 0
-    ? "drill_tag_map!inner(tag_id)"
-    : "drill_tag_map(tag_id)";
+    ? "drill_tag_map!inner(tag_id, drill_tags!inner(id, name))"
+    : "drill_tag_map(tag_id, drill_tags!inner(id, name))";
 
   let query = client
     .from("drills")
@@ -441,7 +483,6 @@ export async function listDrills(
         updated_at,
         segment:segments(id, name),
         drill_media(id, media_type, title, url, thumbnail_url, sort_order),
-        drill_skills(skill_id),
         ${tagEmbed}
       `,
       { count: "exact" },
@@ -468,12 +509,12 @@ export async function listDrills(
 
   if (error) return { data: [], count: 0, error };
 
-  const mapped: DrillListItemDto[] = (data ?? []).map((row: any) => mapDrillRowToDto(row));
+  const mapped: DrillDto[] = (data ?? []).map((row: any) => mapDrillRowToDto(row));
   return { data: mapped, count: count ?? mapped.length, error: null };
 }
 
 
-function mapDrillRowToDto(row: any): DrillListItemDto {
+function mapDrillRowToDto(row: any): DrillDto {
   const media: DrillMediaDto[] = (row.drill_media ?? []).map((m: any) => ({
     type: m.media_type ?? "video",
     url: m.url,
@@ -483,9 +524,18 @@ function mapDrillRowToDto(row: any): DrillListItemDto {
     position: m.sort_order ?? null,
   }));
 
-  const skill_tags: string[] = (row.drill_skills ?? [])
-    .map((s: any) => s.skill_id)
-    .filter(Boolean);
+  const skill_tags: { id: string; name: string }[] = (row.drill_tag_map ?? [])
+    .map((item: any) => {
+      const tag = item?.drill_tags ?? null;
+      if (!tag?.id) return null;
+      return {
+        id: tag.id,
+        name: typeof tag.name === "string" ? tag.name : "",
+      };
+    })
+    .filter((tag: { id: string; name: string } | null): tag is { id: string; name: string } =>
+      Boolean(tag)
+    );
 
   return {
     id: row.id,
@@ -524,7 +574,7 @@ function mapDrillMediaRow(row: any): DrillMediaRecordDto {
 }
 
 export async function getDrillById(drill_id: string): Promise<{
-  data: unknown;
+  data: DrillDto | null;
   error: unknown;
 }> {
   const client = sbAdmin;
@@ -535,8 +585,23 @@ export async function getDrillById(drill_id: string): Promise<{
   const { data, error } = await client
     .from("drills")
     .select(`
-      *,
-      drill_media(title, url, thumbnail_url),
+      id,
+      org_id,
+      segment_id,
+      name,
+      description,
+      level,
+      min_players,
+      max_players,
+      min_age,
+      max_age,
+      duration_min,
+      visibility,
+      is_archived,
+      created_at,
+      updated_at,
+      segment:segments(id, name),
+      drill_media(id, media_type, title, url, thumbnail_url, sort_order),
       drill_tag_map(tag_id, drill_tags!inner(id, name))
     `)
     .eq("id", drill_id)
@@ -546,5 +611,5 @@ export async function getDrillById(drill_id: string): Promise<{
     return { data: null, error };
   }
 
-  return { data, error: null };
+  return { data: data ? mapDrillRowToDto(data) : null, error: null };
 }

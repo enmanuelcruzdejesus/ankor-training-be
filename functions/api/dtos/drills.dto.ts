@@ -58,6 +58,24 @@ export const CreateDrillSchema = z.object({
   skill_tags: z.array(SkillTagInputSchema).optional().default([]),
 });
 
+export const UpdateDrillSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(4000).optional().nullable(),
+  instructions: z.string().trim().max(4000).optional().nullable(),
+  level: z.string().trim().max(50).optional().nullable(),
+  segment_id: segmentId().optional().nullable(),
+  min_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
+  max_age: z.number({ coerce: true }).int().min(0).optional().nullable(),
+  min_players: z.number({ coerce: true }).int().min(0).optional().nullable(),
+  max_players: z.number({ coerce: true }).int().min(0).optional().nullable(),
+  duration_seconds: z.number({ coerce: true }).int().positive().optional().nullable(),
+  duration_min: z.number({ coerce: true }).int().positive().optional().nullable(),
+  visibility: z.string().trim().min(1).max(50).optional().nullable(),
+  is_archived: z.boolean().optional(),
+  add_tag_ids: z.array(uuid()).optional().default([]),
+  remove_tag_ids: z.array(uuid()).optional().default([]),
+});
+
 export const DrillListFilterSchema = z.object({
   org_id: uuid(),
   name: z.string().trim().min(1).optional(),
@@ -82,7 +100,7 @@ export const GetDrillMediaByIdSchema = z.object({
 
 export type DrillListFilterInput = z.infer<typeof DrillListFilterSchema>;
 
-export interface DrillListItemDto {
+export interface DrillDto {
   id: string;
   org_id: string | null;
   segment_id: string | null;
@@ -99,12 +117,72 @@ export interface DrillListItemDto {
   created_at: string;
   updated_at: string;
   segment: { id: string; name: string | null } | null;
-  skill_tags: string[];
+  skill_tags: {id: string ; name: string}[];
   media: DrillMediaDto[];
 }
 
+export type DrillSegmentDto = {
+  id: string;
+  name: string | null;
+};
+
+export type DrillTagDto = {
+  id: string;
+  name: string;
+};
+
+export type DrillMediaUploadResult = {
+  bucket: string;
+  path: string;
+  signed_url: string;
+  token: string;
+  public_url: string;
+};
+
+export type DrillMediaRecordDto = {
+  id: string;
+  drill_id: string;
+  type: string;
+  url: string;
+  title: string | null;
+  thumbnail_url: string | null;
+  position: number | null;
+};
+
+export type DrillMediaPlaybackDto = {
+  media: DrillMediaRecordDto;
+  play_url: string;
+  expires_in: number | null;
+};
+
+export type RpcCreateDrillPayload = {
+  p_drill: {
+    org_id: string;
+    segment_id: string | null;
+    sport_id: string | null;
+    name: string;
+    description: string | null;
+    instructions: string | null;
+    level: string | null;
+    min_age: number | null;
+    max_age: number | null;
+    duration_seconds: number | null;
+    created_by: string | null;
+  };
+  p_media: Array<{
+    type: string;
+    url: string;
+    title: string | null;
+    description: string | null;
+    thumbnail_url: string | null;
+    position: number | null;
+  }>;
+  p_skill_tags: string[];
+};
+
 export type DrillMediaDto = z.infer<typeof DrillMediaSchema>;
 export type CreateDrillInput = z.infer<typeof CreateDrillSchema>;
+export type UpdateDrillInput = z.infer<typeof UpdateDrillSchema>;
 export type CreateDrillMediaInput = z.infer<typeof CreateDrillMediaSchema>;
 export type DrillMediaUploadInput = z.infer<typeof DrillMediaUploadSchema>;
 
