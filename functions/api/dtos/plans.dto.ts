@@ -36,6 +36,12 @@ export const GetPlanByIdSchema = z.object({
   plan_id: uuid(),
 });
 
+export const InvitePlanMembersSchema = z.object({
+  user_ids: z.array(uuid()).min(1, "user_ids is required"),
+  role: z.string().trim().min(1).optional().default("viewer"),
+  added_by: uuid().optional().nullable(),
+});
+
 export const PlanItemSchema = z
   .object({
     section_title: z.string().trim().max(200).optional().nullable(),
@@ -107,9 +113,28 @@ export const UpdatePlanSchema = z
 export type PlanListFilterInput = z.infer<typeof PlanListFilterSchema>;
 export type InvitedPlanListInput = z.infer<typeof InvitedPlanListSchema>;
 export type GetPlanByIdInput = z.infer<typeof GetPlanByIdSchema>;
+export type InvitePlanMembersInput = z.infer<typeof InvitePlanMembersSchema>;
 export type PlanItemInput = z.infer<typeof PlanItemSchema>;
 export type CreatePlanInput = z.infer<typeof CreatePlanSchema>;
 export type UpdatePlanInput = z.infer<typeof UpdatePlanSchema>;
+
+export type PlanItemDto = {
+  id: string;
+  plan_id: string;
+  section_title: string | null;
+  section_order: number | null;
+  position: number | null;
+  item_type: string;
+  drill_id: string | null;
+  drill_name: string | null;
+  title: string | null;
+  instructions: string | null;
+  sets: number | null;
+  reps: number | null;
+  duration_seconds: number | null;
+  rest_seconds: number | null;
+  config: Record<string, unknown>;
+};
 
 export type PlanDto = {
   id: string;
@@ -123,6 +148,10 @@ export type PlanDto = {
   estimated_minutes: number | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PlanDetailDto = PlanDto & {
+  practice_plan_items: PlanItemDto[];
 };
 
 export type InvitedPlanDto = PlanDto & {

@@ -2,6 +2,7 @@ import { Router } from "./router.ts";
 import {
   createPlanController,
   getPlanByIdController,
+  invitePlanMembersController,
   listInvitedPlansController,
   listPlansController,
   updatePlanController,
@@ -13,6 +14,7 @@ export function createPlansRouter(): Router {
   router.add("GET", "list", listPlansController);
   router.add("GET", "invited", listInvitedPlansController);
   router.add("GET", ":id", getPlanByIdController);
+  router.add("POST", ":id/invite", invitePlanMembersController);
   router.add("PATCH", ":id", updatePlanController);
   router.add("POST", "", createPlanController);
 

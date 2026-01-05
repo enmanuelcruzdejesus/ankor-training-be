@@ -2,12 +2,14 @@ import {
   CreatePlanSchema,
   GetPlanByIdSchema,
   InvitedPlanListSchema,
+  InvitePlanMembersSchema,
   PlanListFilterSchema,
   UpdatePlanSchema,
 } from "../dtos/plans.dto.ts";
 import {
   createPlan,
   getPlanById,
+  invitePlanMembers,
   listInvitedPlans,
   listPlansByType,
   updatePlan,
@@ -20,6 +22,7 @@ import {
   methodNotAllowed,
   notFound,
 } from "../utils/http.ts";
+import { RE_UUID } from "../utils/uuid.ts";
 
 function qp(url: URL, key: string): string | undefined {
   const value = url.searchParams.get(key);
@@ -80,6 +83,64 @@ export async function listInvitedPlansController(req: Request): Promise<Response
   }
 
   return json(200, { ok: true, count, items: data });
+}
+
+export async function invitePlanMembersController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  const plan_id = params?.id;
+  if (!plan_id) {
+    return badRequest("Missing 'id' path parameter");
+  }
+
+  const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
+  const idParsed = GetPlanByIdSchema.safeParse({ plan_id });
+  if (!idParsed.success) {
+    const message = idParsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return badRequest("Invalid JSON payload");
+  }
+
+  const parsed = InvitePlanMembersSchema.safeParse(raw);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const { data, error } = await invitePlanMembers(plan_id, org_id, parsed.data);
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("not found")) {
+      return notFound("Plan not found");
+    }
+    if (message.toLowerCase().includes("organization")) {
+      return badRequest(message);
+    }
+    console.error("[invitePlanMembersController] invite error", error);
+    return internalError(error, "Failed to invite plan members");
+  }
+
+  return json(200, {
+    ok: true,
+    plan_id,
+    invited_user_ids: data?.invited_user_ids ?? [],
+    skipped_user_ids: data?.skipped_user_ids ?? [],
+  });
 }
 
 export async function getPlanByIdController(
