@@ -7,16 +7,68 @@ import {
   listPlansController,
   updatePlanController,
 } from "../controllers/plans.controller.ts";
+import {
+  planCreateGuard,
+  planReadGuard,
+  planWriteGuard,
+  orgRoleGuardFromQuery,
+  userQueryGuard,
+} from "../utils/guards.ts";
 
 export function createPlansRouter(): Router {
   const router = new Router();
 
-  router.add("GET", "list", listPlansController);
-  router.add("GET", "invited", listInvitedPlansController);
-  router.add("GET", ":id", getPlanByIdController);
-  router.add("POST", ":id/invite", invitePlanMembersController);
-  router.add("PATCH", ":id", updatePlanController);
-  router.add("POST", "", createPlanController);
+  router.add(
+    "GET",
+    "list",
+    listPlansController,
+    [
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      userQueryGuard("user_id", { allowMissing: true }),
+    ],
+  );
+  router.add(
+    "GET",
+    "invited",
+    listInvitedPlansController,
+    [
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      userQueryGuard("user_id"),
+    ],
+  );
+  router.add(
+    "GET",
+    ":id",
+    getPlanByIdController,
+    [
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      planReadGuard(),
+    ],
+  );
+  router.add(
+    "POST",
+    ":id/invite",
+    invitePlanMembersController,
+    [
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      planWriteGuard(),
+    ],
+  );
+  router.add(
+    "PATCH",
+    ":id",
+    updatePlanController,
+    [
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      planWriteGuard(),
+    ],
+  );
+  router.add(
+    "POST",
+    "",
+    createPlanController,
+    [planCreateGuard()],
+  );
 
   return router;
 }

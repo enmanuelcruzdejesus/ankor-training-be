@@ -16,7 +16,7 @@ export type TeamAthlete = {
   cell_number: string | null;
 };
 
-export async function listTeamsWithAthletes(): Promise<{
+export async function listTeamsWithAthletes(org_id: string): Promise<{
   data: any[] | null;
   error: unknown;
 }> {
@@ -35,6 +35,7 @@ export async function listTeamsWithAthletes(): Promise<{
         )
       )
     `)
+    .eq("org_id", org_id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -82,7 +83,7 @@ export async function getTeamsByOrgId(orgId: string): Promise<TeamDTO[]> {
 
   const { data, error } = await sbAdmin
     .from("teams")
-    .select("id, org_id, name, level, gender, season, is_active, join_code")
+    .select("id, org_id, name, gender, season, is_active, join_code")
     .eq("org_id", orgId)
     .order("name", { ascending: true });
 
@@ -96,11 +97,13 @@ export async function getTeamsByOrgId(orgId: string): Promise<TeamDTO[]> {
 
 export async function getAthletesByTeam(
   teamId: string,
+  org_id: string,
 ): Promise<{ data: TeamAthlete[] | null; error: unknown }> {
   const { data, error } = await sbAdmin!
     .from("team_athletes")
     .select(`
       team_id,
+      teams!inner(org_id),
       athlete:athletes (
         id,
         org_id,
@@ -117,6 +120,7 @@ export async function getAthletesByTeam(
       )
     `)
     .eq("team_id", teamId)
+    .eq("teams.org_id", org_id)
     .eq("status", "active");
 
   if (error) {

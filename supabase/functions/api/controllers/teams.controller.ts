@@ -1,5 +1,9 @@
 // src/controllers/teamsController.ts
-import { listTeamsWithAthletes } from "../services/teams.service.ts";
+import {
+  getAthletesByTeam,
+  getTeamsByOrgId,
+  listTeamsWithAthletes,
+} from "../services/teams.service.ts";
 import {
   badRequest,
   internalError,
@@ -7,7 +11,8 @@ import {
   methodNotAllowed,
 } from "../utils/http.ts";
 import type { TeamDTO } from "../dtos/team.dto.ts";
-import { getAllTeams,getAthletesByTeam  } from "../services/teams.service.ts";
+import type { RequestContext } from "../routes/router.ts";
+import { RE_UUID } from "../utils/uuid.ts";
 
 type GetTeamsSuccess = {
   ok: true;
@@ -30,13 +35,22 @@ function jsonResponse(body: GetTeamsResponseBody, status = 200): Response {
 
 export async function handleTeamsWithAthletesList(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
 ): Promise<Response> {
   try {
     if (req.method !== "GET") {
       return methodNotAllowed(["GET"]);
     }
 
-    const { data, error } = await listTeamsWithAthletes();
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const { data, error } = await listTeamsWithAthletes(org_id);
 
     if (error) {
       console.error("[handleTeamsWithAthletesList] list error", error);
@@ -57,10 +71,24 @@ export async function handleTeamsWithAthletesList(
 }
 
 
-export async function getTeamsController(req: Request): Promise<Response> {
+export async function getTeamsController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   try {
-    // No org_id filtering for now – just return all teams
-    const teams: TeamDTO[] = await getAllTeams();
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const teams: TeamDTO[] = await getTeamsByOrgId(org_id);
 
     const body: GetTeamsSuccess = {
       ok: true,
@@ -83,6 +111,9 @@ export async function getTeamsController(req: Request): Promise<Response> {
 
 export async function handleAthletesByTeam(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
 ): Promise<Response> {
   try {
     if (req.method !== "GET") {
@@ -91,12 +122,16 @@ export async function handleAthletesByTeam(
 
     const url = new URL(req.url);
     const teamId = url.searchParams.get("team_id");
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
 
     if (!teamId) {
       return badRequest("Query parameter 'team_id' is required.");
     }
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
 
-    const { data, error } = await getAthletesByTeam(teamId);
+    const { data, error } = await getAthletesByTeam(teamId, org_id);
 
     if (error) {
       console.error("[handleAthletesByTeam] error", error);

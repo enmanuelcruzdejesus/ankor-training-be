@@ -21,7 +21,10 @@ import {
   json,
   methodNotAllowed,
   notFound,
+  forbidden,
+  unauthorized,
 } from "../utils/http.ts";
+import type { RequestContext } from "../routes/router.ts";
 import { RE_UUID } from "../utils/uuid.ts";
 
 function qp(url: URL, key: string): string | undefined {
@@ -37,6 +40,7 @@ export async function listPlansController(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const rawFilters = {
+    org_id: (url.searchParams.get("org_id") ?? "").trim(),
     type: (url.searchParams.get("type") ?? "").trim(),
     user_id: (url.searchParams.get("user_id") ?? "").trim() || undefined,
     limit: qp(url, "limit"),
@@ -65,6 +69,7 @@ export async function listInvitedPlansController(req: Request): Promise<Response
 
   const url = new URL(req.url);
   const rawFilters = {
+    org_id: (url.searchParams.get("org_id") ?? "").trim(),
     user_id: (url.searchParams.get("user_id") ?? "").trim(),
     limit: qp(url, "limit"),
     offset: qp(url, "offset"),
@@ -89,6 +94,7 @@ export async function invitePlanMembersController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  _ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "POST") {
     return methodNotAllowed(["POST"]);
@@ -147,6 +153,7 @@ export async function getPlanByIdController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  _ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
@@ -157,13 +164,19 @@ export async function getPlanByIdController(
     return badRequest("Missing 'id' path parameter");
   }
 
+  const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
   const parsed = GetPlanByIdSchema.safeParse({ plan_id });
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
     return badRequest(message);
   }
 
-  const { data, error } = await getPlanById(parsed.data.plan_id);
+  const { data, error } = await getPlanById(parsed.data.plan_id, org_id);
   if (error) {
     console.error("[getPlanByIdController] fetch error", error);
     return internalError(error, "Failed to fetch plan");
@@ -180,6 +193,7 @@ export async function updatePlanController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  _ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "PATCH") {
     return methodNotAllowed(["PATCH"]);
@@ -188,6 +202,12 @@ export async function updatePlanController(
   const plan_id = params?.id;
   if (!plan_id) {
     return badRequest("Missing 'id' path parameter");
+  }
+
+  const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
   }
 
   const idParsed = GetPlanByIdSchema.safeParse({ plan_id });
@@ -207,7 +227,7 @@ export async function updatePlanController(
     return badRequest(message);
   }
 
-  const { data, error } = await updatePlan(plan_id, parsed.data);
+  const { data, error } = await updatePlan(plan_id, org_id, parsed.data);
   if (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.toLowerCase().includes("not found")) {
@@ -220,7 +240,12 @@ export async function updatePlanController(
   return json(200, { ok: true, plan: data });
 }
 
-export async function createPlanController(req: Request): Promise<Response> {
+export async function createPlanController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   if (req.method !== "POST") {
     return methodNotAllowed(["POST"]);
   }
@@ -234,6 +259,14 @@ export async function createPlanController(req: Request): Promise<Response> {
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
     return badRequest(message);
+  }
+
+  const userId = ctx?.user?.id;
+  if (!userId) {
+    return unauthorized("Unauthorized");
+  }
+  if (parsed.data.owner_user_id !== userId) {
+    return forbidden("owner_user_id must match the authenticated user");
   }
 
   const { data, error } = await createPlan(parsed.data);

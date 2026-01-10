@@ -64,11 +64,27 @@ export async function listScorecardTemplates(params: {
 }
 
 export async function listScorecardCategoriesByTemplate(args: {
+  org_id: string;
   scorecard_template_id: string;
   limit: number;
   offset: number;
 }) {
-  const { scorecard_template_id, limit, offset } = args;
+  const { org_id, scorecard_template_id, limit, offset } = args;
+
+  const { data: template, error: templateError } = await sbAdmin!
+    .from("scorecard_templates")
+    .select("id")
+    .eq("id", scorecard_template_id)
+    .eq("org_id", org_id)
+    .maybeSingle();
+
+  if (templateError) {
+    return { data: null, count: 0, error: templateError };
+  }
+
+  if (!template) {
+    return { data: [], count: 0, error: null };
+  }
 
   const { data, error, count } = await sbAdmin!
     .from("scorecard_categories")
@@ -83,11 +99,27 @@ export async function listScorecardCategoriesByTemplate(args: {
 }
 
 export async function listScorecardSubskillsByCategory(args: {
+  org_id: string;
   category_id: string;
   limit: number;
   offset: number;
 }) {
-  const { category_id, limit, offset } = args;
+  const { org_id, category_id, limit, offset } = args;
+
+  const { data: category, error: categoryError } = await sbAdmin!
+    .from("scorecard_categories")
+    .select("id, template:scorecard_templates!inner(org_id)")
+    .eq("id", category_id)
+    .eq("scorecard_templates.org_id", org_id)
+    .maybeSingle();
+
+  if (categoryError) {
+    return { data: null, count: 0, error: categoryError };
+  }
+
+  if (!category) {
+    return { data: [], count: 0, error: null };
+  }
 
   const { data, error, count } = await sbAdmin!
     .from("scorecard_subskills")

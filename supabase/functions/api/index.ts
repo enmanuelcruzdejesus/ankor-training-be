@@ -19,19 +19,21 @@ import { createTeamsRouter } from "./routes/teams.router.ts";
 import { createDrillsRouter } from "./routes/drills.router.ts";
 import { createPlansRouter } from "./routes/plans.router.ts";
 import { createUsersRouter } from "./routes/users.router.ts";
+import { authMiddleware } from "./utils/auth.ts";
 
 const router = new Router();
+const requireAuth = authMiddleware();
 
 // Mount resource routers
 router.use("auth", createAuthRouter());
 router.use("org", createOrgRouter());
-router.use("scorecard", createScorecardsRouter());
-router.use("skills", createSkillsRouter());
-router.use("teams", createTeamsRouter()); 
-router.use("evaluations", createEvaluationsRouter());
-router.use("drills", createDrillsRouter());
-router.use("plans", createPlansRouter());
-router.use("users", createUsersRouter());
+router.use("scorecard", createScorecardsRouter(), [requireAuth]);
+router.use("skills", createSkillsRouter(), [requireAuth]);
+router.use("teams", createTeamsRouter(), [requireAuth]); 
+router.use("evaluations", createEvaluationsRouter(), [requireAuth]);
+router.use("drills", createDrillsRouter(), [requireAuth]);
+router.use("plans", createPlansRouter(), [requireAuth]);
+router.use("users", createUsersRouter(), [requireAuth]);
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin") ?? "*";

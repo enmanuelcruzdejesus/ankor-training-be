@@ -25,7 +25,9 @@ import {
   methodNotAllowed,
   json,
   jsonResponse,
+  unauthorized,
 } from "../utils/http.ts";
+import type { RequestContext } from "../routes/router.ts";
 import { RE_UUID } from "../utils/uuid.ts";
 
 function qp(url: URL, key: string): string | undefined {
@@ -54,7 +56,12 @@ function isUploadContentTypeValid(type: string, contentType: string): boolean {
   return true;
 }
 
-export async function createDrillController(req: Request): Promise<Response> {
+export async function createDrillController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   if (req.method !== "POST") {
     return methodNotAllowed(["POST"]);
   }
@@ -70,7 +77,11 @@ export async function createDrillController(req: Request): Promise<Response> {
     return badRequest(message);
   }
 
+  const userId = ctx?.user?.id;
+  if (!userId) return unauthorized("Unauthorized");
+
   const dto = normalizeCreateDrillDto(parsed.data);
+  dto.created_by = userId;
 
   const { data, error } = await createDrill(dto);
 
@@ -85,13 +96,18 @@ export async function createDrillController(req: Request): Promise<Response> {
   return created({ ok: true, drill });
 }
 
-export async function listDrillsController(req: Request): Promise<Response> {
+export async function listDrillsController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
   }
 
   const url = new URL(req.url);
-  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
   if (!RE_UUID.test(org_id)) {
     return badRequest("org_id (UUID) is required");
   }
@@ -131,7 +147,12 @@ export async function listDrillsController(req: Request): Promise<Response> {
   return json(200, { ok: true, count, items: data });
 }
 
-export async function listSegmentsController(req: Request): Promise<Response> {
+export async function listSegmentsController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
+): Promise<Response> {
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
   }
@@ -145,13 +166,18 @@ export async function listSegmentsController(req: Request): Promise<Response> {
   return json(200, { ok: true, count: data.length, items: data });
 }
 
-export async function listDrillTagsController(req: Request): Promise<Response> {
+export async function listDrillTagsController(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
   }
 
   const url = new URL(req.url);
-  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
   if (!RE_UUID.test(org_id)) {
     return badRequest("org_id (UUID) is required");
   }
@@ -189,6 +215,7 @@ export async function getDrillByIdController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  ctx?: RequestContext,
 ): Promise<Response> {
   
   if (req.method !== "GET") {
@@ -210,11 +237,21 @@ export async function getDrillByIdController(
     return badRequest(message);
   }
 
-  const { data, error } = await getDrillById(parsed.data.drill_id);
+  const url = new URL(req.url);
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
+  const { data, error } = await getDrillById(parsed.data.drill_id, org_id);
 
   if (error) {
     console.error("[getDrillByIdController] Error fetching drill", error);
     return internalError(error, "Failed to fetch drill");
+  }
+
+  if (!data) {
+    return jsonResponse({ ok: false, error: "Drill not found" }, { status: 404 });
   }
 
   return json(200, { ok: true, drill: data });
@@ -224,6 +261,7 @@ export async function updateDrillController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "PATCH") {
     return methodNotAllowed(["PATCH"]);
@@ -263,7 +301,13 @@ export async function updateDrillController(
     return badRequest("No updates provided");
   }
 
-  const { data, error } = await updateDrill(drill_id, parsed.data);
+  const url = new URL(req.url);
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
+  const { data, error } = await updateDrill(drill_id, org_id, parsed.data);
 
   if (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -280,6 +324,7 @@ export async function getDrillMediaPlaybackController(
   req: Request,
   _origin: string | null,
   params?: { id?: string },
+  ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "GET") {
     return methodNotAllowed(["GET"]);
@@ -300,6 +345,11 @@ export async function getDrillMediaPlaybackController(
   }
 
   const url = new URL(req.url);
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
   const rawExpires = url.searchParams.get("expires_in");
   const parsedExpires = rawExpires ? Number.parseInt(rawExpires, 10) : NaN;
   const expires_in = Number.isFinite(parsedExpires)
@@ -308,6 +358,7 @@ export async function getDrillMediaPlaybackController(
 
   const { data, error } = await getDrillMediaPlaybackUrl(
     parsed.data.drill_id,
+    org_id,
     expires_in,
   );
 
@@ -329,6 +380,9 @@ export async function getDrillMediaPlaybackController(
 
 export async function createDrillMediaUploadUrlController(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "POST") {
     return methodNotAllowed(["POST"]);
@@ -375,6 +429,9 @@ export async function createDrillMediaUploadUrlController(
 
 export async function createDrillMediaController(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ): Promise<Response> {
   if (req.method !== "POST") {
     return methodNotAllowed(["POST"]);
@@ -394,6 +451,10 @@ export async function createDrillMediaController(
   const { data, error } = await createDrillMedia(parsed.data);
   if (error) {
     console.error("[createDrillMediaController] error", error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("not found")) {
+      return jsonResponse({ ok: false, error: "Drill not found" }, { status: 404 });
+    }
     return internalError(error, "Failed to create drill media");
   }
 

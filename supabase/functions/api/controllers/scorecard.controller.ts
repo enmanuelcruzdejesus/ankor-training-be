@@ -1,13 +1,24 @@
 // supabase/functions/_shared/controllers/scorecards.ts
 import { ScorecardTemplateCreateSchema } from "../schemas/schemas.ts";
 import { badRequest, json, serverError} from "../utils/responses.ts";
-import { rpcCreateScorecardTemplate, 
-  listScorecardTemplates,listScorecardCategoriesByTemplate, 
-  listScorecardSubskillsByCategory } from "../services/scorecards.service.ts";
+import {
+  listScorecardCategoriesByTemplate,
+  listScorecardSubskillsByCategory,
+  listScorecardTemplates,
+  rpcCreateScorecardTemplate,
+} from "../services/scorecards.service.ts";
+import type { RequestContext } from "../routes/router.ts";
+import { unauthorized } from "../utils/http.ts";
+import { RE_UUID } from "../utils/uuid.ts";
 
 
 // ---- Create Template ----
-export async function handleScorecardsCreateTemplate(req: Request, origin: string | null) {
+export async function handleScorecardsCreateTemplate(
+  req: Request,
+  origin: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+) {
   if (req.method !== "POST") return badRequest("Method not allowed", origin);
 
   const raw = await req.json().catch(() => null);
@@ -17,13 +28,8 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
     return badRequest(msg, origin);
   }
   const body = parsed.data;
-
-  // Auth mode: if no Bearer, createdBy is required
-  const authHeader = req.headers.get("authorization") ?? "";
-  const hasBearer = authHeader.toLowerCase().startsWith("bearer ");
-  if (!hasBearer && !body.createdBy) {
-    return badRequest("createdBy (UUID) is required without Authorization: Bearer", origin);
-  }
+  const userId = ctx?.user?.id;
+  if (!userId) return unauthorized("Unauthorized");
 
   // Normalize category/subskill positions
   const categories = body.categories.map((c, i) => ({
@@ -47,9 +53,10 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
     categories,
   };
 
-  const rpcArgs: Record<string, unknown> = { p_template: payload };
-  // If you have a valid JWT (Bearer), SQL can use auth.uid(); otherwise use createdBy.
-  if (!hasBearer) rpcArgs.p_created_by = body.createdBy!;
+  const rpcArgs: Record<string, unknown> = {
+    p_template: payload,
+    p_created_by: userId,
+  };
 
   const { data: rpcData, error: rpcErr } = await rpcCreateScorecardTemplate(rpcArgs);
   if (rpcErr || !rpcData?.length) {
@@ -72,11 +79,16 @@ export async function handleScorecardsCreateTemplate(req: Request, origin: strin
 }
 
 // ---- List Templates ----
-export async function handleScorecardsList(req: Request, origin: string | null) {
+export async function handleScorecardsList(
+  req: Request,
+  origin: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+) {
   if (req.method !== "GET") return badRequest("Method not allowed", origin);
 
   const url = new URL(req.url);
-  const org_id = (url.searchParams.get("org_id") ?? "").trim();
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
   const sport_id = (url.searchParams.get("sport_id") ?? "").trim() || undefined;
   const q = (url.searchParams.get("q") ?? "").trim() || undefined;
 
@@ -105,10 +117,13 @@ export async function handleScorecardsList(req: Request, origin: string | null) 
 export async function handleScorecardCategoriesByTemplate(
   req: Request,
   origin: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ) {
   if (req.method !== "GET") return badRequest("Method not allowed", origin);
 
   const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
   const scorecard_template_id =
     (url.searchParams.get("scorecard_template_id") ?? "").trim();
 
@@ -120,11 +135,16 @@ export async function handleScorecardCategoriesByTemplate(
   );
   const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
 
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required", origin);
+  }
+
   if (!scorecard_template_id) {
     return badRequest("scorecard_template_id (UUID) is required", origin);
   }
 
   const { data, count, error } = await listScorecardCategoriesByTemplate({
+    org_id,
     scorecard_template_id,
     limit,
     offset,
@@ -138,10 +158,13 @@ export async function handleScorecardCategoriesByTemplate(
 export async function handleScorecardSubskillsByCategory(
   req: Request,
   origin: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ) {
   if (req.method !== "GET") return badRequest("Method not allowed", origin);
 
   const url = new URL(req.url);
+  const org_id = (url.searchParams.get("org_id") ?? "").trim();
   const category_id = (url.searchParams.get("category_id") ?? "").trim();
 
   const limitRaw = url.searchParams.get("limit");
@@ -152,11 +175,16 @@ export async function handleScorecardSubskillsByCategory(
   );
   const offset = Math.max(parseInt(offsetRaw ?? "0", 10) || 0, 0);
 
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required", origin);
+  }
+
   if (!category_id) {
     return badRequest("category_id (UUID) is required", origin);
   }
 
   const { data, count, error } = await listScorecardSubskillsByCategory({
+    org_id,
     category_id,
     limit,
     offset,

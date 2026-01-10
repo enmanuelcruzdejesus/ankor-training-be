@@ -38,6 +38,7 @@ export const DrillMediaUploadSchema = z.object({
 });
 
 export const CreateDrillMediaSchema = DrillMediaSchema.extend({
+  org_id: uuid(),
   drill_id: uuid(),
   type: DrillMediaTypeSchema.default("video"),
 });

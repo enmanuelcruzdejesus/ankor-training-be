@@ -21,6 +21,8 @@ import {
   type EvaluationMatrixUpdateDto,
 } from "../dtos/evaluations.dto.ts";
 import { jsonResponse } from "../utils/http.ts";
+import type { RequestContext } from "../routes/router.ts";
+import { RE_UUID } from "../utils/uuid.ts";
 
 /**
  * Validate a single evaluation item
@@ -138,6 +140,9 @@ function parseEvaluation(raw: unknown, index: number): EvaluationInput {
  */
 export async function bulkCreateEvaluationsController(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ): Promise<Response> {
   try {
     if (req.method !== "POST") {
@@ -180,13 +185,20 @@ export async function bulkCreateEvaluationsController(
  * GET /api/evaluations/list
  * Returns ONLY evaluations
  */
-export async function handleEvaluationsList(req: Request): Promise<Response> {
+export async function handleEvaluationsList(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
   try {
     if (req.method !== "GET") {
       return methodNotAllowed(["GET"]);
     }
 
-    const { data, error } = await listEvaluations();
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    const { data, error } = await listEvaluations(org_id || undefined);
 
     if (error) {
       console.error("[handleEvaluationsList] list error", error);
@@ -210,6 +222,7 @@ export async function handleEvaluationsList(req: Request): Promise<Response> {
 export async function handleEvaluationById(
   req: Request,
   params?: { id?: string },
+  ctx?: RequestContext,
 ): Promise<Response> {
   let id = params?.id;
 
@@ -227,7 +240,13 @@ export async function handleEvaluationById(
   }
 
   try {
-    const evaluation: EvaluationDetailDto | null = await getEvaluationById(id);
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const evaluation: EvaluationDetailDto | null = await getEvaluationById(id, org_id);
 
     if (!evaluation) {
       return jsonResponse(
@@ -248,6 +267,9 @@ export async function handleEvaluationById(
 
 export async function updateEvaluationMatrixController(
   req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  _ctx?: RequestContext,
 ): Promise<Response> {
   try {
     const url = new URL(req.url);
@@ -268,6 +290,13 @@ export async function updateEvaluationMatrixController(
     if (!body || !Array.isArray(body.operations)) {
       return jsonResponse(
         { ok: false, error: "Body must include an 'operations' array" },
+        { status: 400 },
+      );
+    }
+
+    if (!body.org_id || typeof body.org_id !== "string" || !RE_UUID.test(body.org_id)) {
+      return jsonResponse(
+        { ok: false, error: "org_id (UUID) is required" },
         { status: 400 },
       );
     }
@@ -302,6 +331,7 @@ export async function updateEvaluationMatrixController(
 export async function handleSubmitEvaluation(
   req: Request,
   params?: { id?: string },
+  _ctx?: RequestContext,
 ): Promise<Response> {
   try {
     if (req.method !== "POST") {
@@ -328,7 +358,16 @@ export async function handleSubmitEvaluation(
       );
     }
 
-    const result = await submitEvaluation(id);
+    const url = new URL(req.url);
+    const org_id = (url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return jsonResponse(
+        { ok: false, error: "org_id (UUID) is required" },
+        { status: 400 },
+      );
+    }
+
+    const result = await submitEvaluation(id, org_id);
 
     if (!result.ok) {
       const message =

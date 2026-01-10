@@ -4,16 +4,31 @@ import { allowOrigin, corsHeaders } from "../../_shared/cors.ts";
 
 export type RouteParams = Record<string, string>;
 
+export type RequestContext = {
+  user?: { id: string; email: string | null };
+  org_id?: string;
+  org_role?: string;
+};
+
 export type RouteHandler = (
   req: Request,
   origin: string | null,
   params?: RouteParams,
+  ctx?: RequestContext,
 ) => Response | Promise<Response>;
+
+export type Middleware = (
+  req: Request,
+  origin: string | null,
+  params: RouteParams,
+  ctx: RequestContext,
+) => Response | Promise<Response> | null;
 
 interface RouteDef {
   method: string;
   path: string; // normalized (no leading/trailing slash)
   handler: RouteHandler;
+  middlewares: Middleware[];
 }
 
 function normalizePath(path: string): string {
@@ -49,12 +64,13 @@ function matchPath(
 export class Router {
   private routes: RouteDef[] = [];
 
-  add(method: string, path: string, handler: RouteHandler): void {
+  add(method: string, path: string, handler: RouteHandler, middlewares: Middleware[] = []): void {
     const normalized = normalizePath(path);
     this.routes.push({
       method: method.toUpperCase(),
       path: normalized,
       handler,
+      middlewares,
     });
   }
 
@@ -64,18 +80,20 @@ export class Router {
    *   parent.use("scorecard", scorecardRouter)
    *   // child "list" -> "scorecard/list"
    */
-  use(prefix: string, child: Router): void {
+  use(prefix: string, child: Router, middlewares: Middleware[] = []): void {
     const base = normalizePath(prefix);
 
     for (const r of child.getRoutes()) {
       const combinedPath = r.path
         ? `${base}/${r.path}`.replace(/\/+/g, "/")
         : base;
+      const combinedMiddlewares = [...middlewares, ...r.middlewares];
 
       this.routes.push({
         method: r.method,
         path: normalizePath(combinedPath),
         handler: r.handler,
+        middlewares: combinedMiddlewares,
       });
     }
   }
@@ -111,8 +129,23 @@ export class Router {
       const params: RouteParams = {};
       if (!matchPath(route.path, normalizedPath, params)) continue;
 
+      const ctx: RequestContext = {};
+      for (const middleware of route.middlewares) {
+        const maybeRes = await middleware(req, origin, params, ctx);
+        if (maybeRes) {
+          const headers = new Headers(maybeRes.headers);
+          for (const [k, v] of Object.entries(baseCors)) {
+            headers.set(k, v);
+          }
+          return new Response(maybeRes.body, {
+            status: maybeRes.status,
+            headers,
+          });
+        }
+      }
+
       // Let the route handler generate the base response
-      const res = await route.handler(req, origin, params);
+      const res = await route.handler(req, origin, params, ctx);
 
       // Merge existing headers with CORS headers
       const headers = new Headers(res.headers);

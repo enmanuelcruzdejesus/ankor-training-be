@@ -86,7 +86,7 @@ export async function listPlansByType(
     return { data: [], count: 0, error: new Error("Supabase client not initialized") };
   }
 
-  const { type, user_id, limit, offset } = filters;
+  const { type, user_id, org_id, limit, offset } = filters;
   const rangeTo = offset + (limit - 1);
 
   console.log("user_id:", user_id, "type:", type);
@@ -98,6 +98,7 @@ export async function listPlansByType(
     .order("updated_at", { ascending: false });
 
   query = query.eq("type", type);
+  query = query.eq("org_id", org_id);
   if (type !== "prebuild") {
     query = query.eq("owner_user_id", user_id);
   }
@@ -116,7 +117,7 @@ export async function listInvitedPlans(
     return { data: [], count: 0, error: new Error("Supabase client not initialized") };
   }
 
-  const { user_id, limit, offset } = filters;
+  const { user_id, org_id, limit, offset } = filters;
   const rangeTo = offset + (limit - 1);
 
   const { data, error, count } = await client
@@ -125,6 +126,7 @@ export async function listInvitedPlans(
       `${PLAN_SELECT}, practice_plan_members!inner(role, user_id, added_by, created_at)`,
       { count: "exact" },
     )
+    .eq("org_id", org_id)
     .eq("practice_plan_members.user_id", user_id)
     .neq("owner_user_id", user_id)
     .range(offset, rangeTo)
@@ -327,6 +329,7 @@ export async function invitePlanMembers(
 
 export async function getPlanById(
   plan_id: string,
+  org_id: string,
 ): Promise<{ data: PlanDetailDto | null; error: unknown }> {
   const client = sbAdmin;
   if (!client) {
@@ -337,6 +340,7 @@ export async function getPlanById(
     .from("practice_plans")
     .select(PLAN_WITH_ITEMS_SELECT)
     .eq("id", plan_id)
+    .eq("org_id", org_id)
     .maybeSingle();
 
   if (error) return { data: null, error };
@@ -358,6 +362,7 @@ export async function getPlanById(
 
 export async function updatePlan(
   plan_id: string,
+  org_id: string,
   input: UpdatePlanInput,
 ): Promise<{ data: PlanDto | null; error: unknown }> {
   const client = sbAdmin;
@@ -385,6 +390,7 @@ export async function updatePlan(
       .from("practice_plans")
       .update(patch)
       .eq("id", plan_id)
+      .eq("org_id", org_id)
       .select(PLAN_SELECT)
       .maybeSingle();
 
@@ -396,6 +402,7 @@ export async function updatePlan(
       .from("practice_plans")
       .select(PLAN_SELECT)
       .eq("id", plan_id)
+      .eq("org_id", org_id)
       .maybeSingle();
 
     if (error) return { data: null, error };
@@ -495,4 +502,54 @@ export async function createPlan(
   }
 
   return { data: plan, error: null };
+}
+
+export async function getPlanAccess(
+  plan_id: string,
+): Promise<{
+  data: { org_id: string | null; owner_user_id: string } | null;
+  error: unknown;
+}> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { data, error } = await client
+    .from("practice_plans")
+    .select("org_id, owner_user_id")
+    .eq("id", plan_id)
+    .maybeSingle();
+
+  if (error) return { data: null, error };
+  if (!data) return { data: null, error: null };
+
+  return {
+    data: {
+      org_id: data.org_id ?? null,
+      owner_user_id: data.owner_user_id,
+    },
+    error: null,
+  };
+}
+
+export async function isPlanMember(
+  plan_id: string,
+  user_id: string,
+): Promise<{ data: boolean; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: false, error: new Error("Supabase client not initialized") };
+  }
+
+  const { data, error } = await client
+    .from("practice_plan_members")
+    .select("user_id")
+    .eq("plan_id", plan_id)
+    .eq("user_id", user_id)
+    .maybeSingle();
+
+  if (error) return { data: false, error };
+
+  return { data: Boolean(data?.user_id), error: null };
 }

@@ -1,12 +1,18 @@
 import { badRequest, json, serverError } from "../utils/responses.ts";
 import { listSkills } from "../services/skills.service.ts";
+import type { RequestContext } from "../routes/router.ts";
 import { isUuid } from "../utils/uuid.ts";
 
-export async function handleSkillsList(req: Request, origin: string | null) {
+export async function handleSkillsList(
+  req: Request,
+  origin: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+) {
   if (req.method !== "GET") return badRequest("Method not allowed", origin);
 
   const url = new URL(req.url);
-  const org_id = url.searchParams.get("org_id") ?? "";
+  const org_id = ctx?.org_id ?? url.searchParams.get("org_id") ?? "";
   const sport_id = url.searchParams.get("sport_id") ?? "";
   const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1), 200);

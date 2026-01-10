@@ -129,7 +129,7 @@ export type EvaluationMatrixOperationDto =
 export interface EvaluationMatrixUpdateDto {
   evaluation_id: string;
 
-  org_id?: string;
+  org_id: string;
   template_id?: string;
   team_id?: string | null;
   coach_id?: string;

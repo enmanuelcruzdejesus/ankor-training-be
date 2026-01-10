@@ -11,6 +11,7 @@ export const PlanListTypeSchema = z.enum(["prebuild", "custom"]);
 
 export const PlanListFilterSchema = z
   .object({
+    org_id: uuid(),
     type: PlanListTypeSchema,
     user_id: uuid().optional(),
     limit: z.number({ coerce: true }).int().min(1).max(200).optional().default(50),
@@ -27,6 +28,7 @@ export const PlanListFilterSchema = z
   });
 
 export const InvitedPlanListSchema = z.object({
+  org_id: uuid(),
   user_id: uuid(),
   limit: z.number({ coerce: true }).int().min(1).max(200).optional().default(50),
   offset: z.number({ coerce: true }).int().min(0).optional().default(0),

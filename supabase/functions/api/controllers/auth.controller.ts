@@ -1,4 +1,4 @@
-import { SignUpSchema } from "../schemas/schemas.ts";
+﻿import { SignUpSchema } from "../schemas/schemas.ts";
 import { json, badRequest, conflict, serverError } from "../utils/responses.ts";
 import { sbAdmin } from "../services/supabase.ts";
 import { rpcRegisterAthlete, rpcRegisterCoach, rpcRegisterParent } from "../services/signup.service..ts";
@@ -31,7 +31,7 @@ export async function handleAuthSignup(req: Request, origin: string | null) {
       ...(base.role === "athlete" ? { graduation_year: base.graduationYear, positions: base.positions } : {}),
     },
     app_metadata: { role: base.role },
-    email_confirm: false,
+    email_confirm: true,
   });
 
   if (createErr) {

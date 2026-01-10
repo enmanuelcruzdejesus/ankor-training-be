@@ -1,4 +1,4 @@
-import { badRequest, json, serverError } from "../utils/responses.ts";
+﻿import { badRequest, json, serverError } from "../utils/responses.ts";
 import { sbAdmin } from "../services/supabase.ts";
 
 type Body = {
@@ -26,7 +26,7 @@ export async function handleOrgSignup(req: Request, origin: string | null) {
   const { data: created, error: createErr } = await sbAdmin!.auth.admin.createUser({
     email: admin.email,
     password: admin.password,
-    email_confirm: false,
+    email_confirm: true,
     user_metadata: {
       first_name: admin.firstName,
       last_name: admin.lastName,

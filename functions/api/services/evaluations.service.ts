@@ -64,11 +64,11 @@ export async function rpcBulkCreateEvaluations(args: {
 }
 
 
-export async function listEvaluations(): Promise<{
+export async function listEvaluations(org_id?: string): Promise<{
   data: any[] | null;
   error: unknown;
 }> {
-  const { data, error } = await sbAdmin!
+  let query = sbAdmin!
     .from('evaluations')
     .select(
       `
@@ -92,6 +92,12 @@ export async function listEvaluations(): Promise<{
     )
     .neq('status', 'completed')
     .order('created_at', { ascending: false })
+
+  if (org_id) {
+    query = query.eq('org_id', org_id)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return { data: null, error }
@@ -119,6 +125,7 @@ export async function listEvaluations(): Promise<{
 
 export async function getEvaluationById(
   evaluationId: string,
+  org_id: string,
 ): Promise<EvaluationDetailDto | null> {
   if (!sbAdmin) {
     throw new Error("Supabase admin client is not configured");
@@ -168,6 +175,7 @@ export async function getEvaluationById(
     `,
     )
     .eq("id", evaluationId)
+    .eq("org_id", org_id)
     .maybeSingle();
 
   if (error) {
@@ -191,6 +199,25 @@ export async function applyEvaluationMatrixUpdateService(
   }
 
   const evaluationId = dto.evaluation_id;
+  const org_id = dto.org_id;
+  if (!org_id) {
+    throw new Error("org_id (UUID) is required");
+  }
+
+  const { data: evaluationRow, error: evaluationError } = await sbAdmin
+    .from("evaluations")
+    .select("id")
+    .eq("id", evaluationId)
+    .eq("org_id", org_id)
+    .maybeSingle();
+
+  if (evaluationError) {
+    throw evaluationError;
+  }
+
+  if (!evaluationRow) {
+    throw new Error("Evaluation not found");
+  }
 
   // 1) Optionally patch the evaluation header row
   const patch: Record<string, unknown> = {};
@@ -204,7 +231,8 @@ export async function applyEvaluationMatrixUpdateService(
     const { error: headerError } = await sbAdmin
       .from("evaluations")
       .update(patch)
-      .eq("id", evaluationId);
+      .eq("id", evaluationId)
+      .eq("org_id", org_id);
 
     if (headerError) {
       console.error(
@@ -317,7 +345,7 @@ export async function applyEvaluationMatrixUpdateService(
   }
 
   // 3) Return the fresh evaluation detail (same shape as GET /eval/:id)
-  const updated = await getEvaluationById(evaluationId);
+  const updated = await getEvaluationById(evaluationId, org_id);
   if (!updated) {
     throw new Error("Evaluation not found after matrix update");
   }
@@ -327,12 +355,14 @@ export async function applyEvaluationMatrixUpdateService(
 
 export async function submitEvaluation(
   evaluationId: string,
+  org_id: string,
 ): Promise<SubmitEvaluationResult> {
   // 1) Update only if it isn't already completed (idempotent)
   const { data: updated, error: updateErr } = await sbAdmin!
     .from('evaluations')
     .update({ status: 'completed' })
     .eq('id', evaluationId)
+    .eq('org_id', org_id)
     .in('status', ['not_started', 'in_progress'])
     .select('id, status');
 
@@ -346,7 +376,8 @@ export async function submitEvaluation(
   const { data: existingRows, error: getErr } = await sbAdmin!
     .from('evaluations')
     .select('id, status')
-    .eq('id', evaluationId);
+    .eq('id', evaluationId)
+    .eq('org_id', org_id);
 
   if (getErr) return { ok: false, error: getErr };
 
