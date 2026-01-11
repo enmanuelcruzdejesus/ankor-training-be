@@ -83,7 +83,7 @@ export async function getTeamsByOrgId(orgId: string): Promise<TeamDTO[]> {
 
   const { data, error } = await sbAdmin
     .from("teams")
-    .select("id, org_id, name, gender, season, is_active, join_code")
+    .select("id, org_id, name, is_active")
     .eq("org_id", orgId)
     .order("name", { ascending: true });
 
@@ -92,7 +92,14 @@ export async function getTeamsByOrgId(orgId: string): Promise<TeamDTO[]> {
     throw new Error("Failed to fetch teams");
   }
 
-  return data ?? [];
+  const mapped = (data ?? []).map((row: any) => ({
+    id: row.id,
+    org_id: row.org_id,
+    name: row.name,
+    is_active: row.is_active ?? false,
+  }));
+
+  return mapped;
 }
 
 export async function getAthletesByTeam(

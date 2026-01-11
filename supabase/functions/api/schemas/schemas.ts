@@ -46,6 +46,11 @@ export const ParentSchema = z.object({
 export const SignUpSchema = z.discriminatedUnion("role", [AthleteSchema, CoachSchema, ParentSchema]);
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 
+export const AuthLoginSchema = z.object({
+  user_id: uuid(),
+});
+export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
+
 // ---- Scorecard template (create) ----
 export const SubskillInputSchema = z.object({
   name: z.string().trim().min(1),

@@ -41,7 +41,8 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@std/assert@1"
+      "jsr:@std/assert@1",
+      "npm:zod@3.22.4"
     ],
     "packageJson": {
       "dependencies": [

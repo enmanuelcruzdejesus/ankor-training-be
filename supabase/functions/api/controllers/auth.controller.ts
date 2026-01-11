@@ -1,7 +1,9 @@
 ﻿import { SignUpSchema } from "../schemas/schemas.ts";
-import { json, badRequest, conflict, serverError } from "../utils/responses.ts";
-import { sbAdmin } from "../services/supabase.ts";
+import { json, badRequest, conflict, notFound, serverError } from "../utils/responses.ts";
+import { AuthLoginSchema } from "../schemas/schemas.ts";
+import { sbAdmin, sbAnon } from "../services/supabase.ts";
 import { rpcRegisterAthlete, rpcRegisterCoach, rpcRegisterParent } from "../services/signup.service..ts";
+
 
 const ALLOWED_POS = ["attack", "midfield", "defense", "faceoff", "goalie"] as const;
 type AllowedPos = (typeof ALLOWED_POS)[number];
@@ -107,4 +109,69 @@ export async function handleAuthSignup(req: Request, origin: string | null) {
     if (m.includes("EMAIL_REQUIRED")) return badRequest("Valid email is required.", origin);
     return serverError(`Signup failed: ${m}`, origin);
   }
+}
+
+export async function handleAuthLogin(req: Request, origin: string | null) {
+  if (req.method !== "POST") return badRequest("Use POST", origin);
+
+  const payload = await req.json().catch(() => null);
+  if (!payload || typeof payload !== "object") {
+    return badRequest("Invalid JSON body", origin);
+  }
+
+  const body = payload as Record<string, unknown>;
+  const userIdRaw =
+    typeof body.user_id === "string" ? body.user_id :
+    typeof body.userId === "string" ? body.userId :
+    typeof body.userid === "string" ? body.userid :
+    "";
+  const parsed = AuthLoginSchema.safeParse({ user_id: userIdRaw.trim() });
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => i.message).join("; ");
+    return badRequest(msg, origin);
+  }
+
+  const authHeader = req.headers.get("authorization") ?? "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return json({ ok: false, error: "Missing bearer token" }, origin, 401);
+  }
+  const token = match[1].trim();
+  if (!token) {
+    return json({ ok: false, error: "Missing bearer token" }, origin, 401);
+  }
+
+  if (!sbAnon) return serverError("Auth client not configured", origin);
+
+  const { data: authData, error: authErr } = await sbAnon.auth.getUser(token);
+  if (authErr || !authData?.user) {
+    return json({ ok: false, error: "Invalid or expired token" }, origin, 401);
+  }
+  if (authData.user.id !== parsed.data.user_id) {
+    return json({ ok: false, error: "Token does not match user" }, origin, 401);
+  }
+
+  if (!sbAdmin) return serverError("Database client not configured", origin);
+
+  const { data: profile, error: profileErr } = await sbAdmin
+    .from("profiles")
+    .select("id, email, full_name, role, default_org_id")
+    .eq("id", parsed.data.user_id)
+    .maybeSingle();
+
+  if (profileErr) {
+    return serverError(`Failed to load profile: ${profileErr.message}`, origin);
+  }
+  if (!profile) return notFound("Profile not found", origin);
+
+  return json({
+    ok: true,
+    user: {
+      id: profile.id,
+      full_name: profile.full_name ?? null,
+      email: profile.email,
+      role: profile.role ?? null,
+      default_org_id: profile.default_org_id ?? null,
+    },
+  }, origin);
 }
