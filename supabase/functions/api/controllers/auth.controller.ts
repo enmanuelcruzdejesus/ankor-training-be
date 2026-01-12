@@ -1,4 +1,4 @@
-﻿import { SignUpSchema } from "../schemas/schemas.ts";
+import { SignUpSchema } from "../schemas/schemas.ts";
 import { json, badRequest, conflict, notFound, serverError } from "../utils/responses.ts";
 import { AuthLoginSchema } from "../schemas/schemas.ts";
 import { sbAdmin, sbAnon } from "../services/supabase.ts";
@@ -164,6 +164,36 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
   }
   if (!profile) return notFound("Profile not found", origin);
 
+  let coach_id: string | null = null;
+  let athlete_id: string | null = null;
+  const profileEmail = profile.email?.trim();
+
+  if (profile.role === "coach" && profileEmail) {
+    const { data: coachRow, error: coachErr } = await sbAdmin
+      .from("coaches")
+      .select("id")
+      .eq("email", profileEmail)
+      .maybeSingle();
+
+    if (coachErr) {
+      return serverError(`Failed to load coach: ${coachErr.message}`, origin);
+    }
+
+    coach_id = coachRow?.id ?? null;
+  } else if (profile.role === "athlete" && profileEmail) {
+    const { data: athleteRow, error: athleteErr } = await sbAdmin
+      .from("athletes")
+      .select("id")
+      .eq("email", profileEmail)
+      .maybeSingle();
+
+    if (athleteErr) {
+      return serverError(`Failed to load athlete: ${athleteErr.message}`, origin);
+    }
+
+    athlete_id = athleteRow?.id ?? null;
+  }
+
   return json({
     ok: true,
     user: {
@@ -172,6 +202,9 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
       email: profile.email,
       role: profile.role ?? null,
       default_org_id: profile.default_org_id ?? null,
+      coach_id,
+      athlete_id,
     },
   }, origin);
 }
+
