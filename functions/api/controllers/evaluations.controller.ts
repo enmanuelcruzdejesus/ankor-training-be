@@ -5,6 +5,7 @@ import {
 import {
   rpcBulkCreateEvaluations,
   listEvaluations,
+  listLatestEvaluationsByAthlete,
   getEvaluationById,
   applyEvaluationMatrixUpdateService,
   submitEvaluation,
@@ -23,6 +24,60 @@ import {
 import { jsonResponse } from "../utils/http.ts";
 import type { RequestContext } from "../routes/router.ts";
 import { RE_UUID } from "../utils/uuid.ts";
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function formatEvaluationDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+
+  const month = parts.find((p) => p.type === "month")?.value?.toUpperCase() ?? "";
+  const day = parts.find((p) => p.type === "day")?.value ?? "";
+  const year = parts.find((p) => p.type === "year")?.value ?? "";
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "";
+  const dayPeriod =
+    parts.find((p) => p.type === "dayPeriod")?.value?.toUpperCase() ?? "";
+
+  if (!month || !day || !year || !hour || !minute || !dayPeriod) {
+    return null;
+  }
+
+  return `${month} ${day}, ${year} AT ${hour}:${minute} ${dayPeriod}`;
+}
+
+function qp(url: URL, key: string): string | undefined {
+  const value = url.searchParams.get(key);
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeDateInput(value: string, boundary: "start" | "end"): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  if (DATE_ONLY_RE.test(trimmed)) {
+    if (boundary === "start") {
+      parsed.setUTCHours(0, 0, 0, 0);
+    } else {
+      parsed.setUTCHours(23, 59, 59, 999);
+    }
+  }
+
+  return parsed.toISOString();
+}
 
 /**
  * Validate a single evaluation item
@@ -214,6 +269,111 @@ export async function handleEvaluationsList(
     });
   } catch (err) {
     console.error("[handleEvaluationsList] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleLatestEvaluationsByAthlete(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    const scorecard_name = qp(url, "scorecard_name");
+    const coachParam = qp(url, "coach");
+    const coach_name = qp(url, "coach_name") ?? coachParam;
+    const coach_id =
+      qp(url, "coach_id") ??
+      (coachParam && RE_UUID.test(coachParam) ? coachParam : undefined);
+
+    if (coach_id && !RE_UUID.test(coach_id)) {
+      return badRequest("coach_id (UUID) is required");
+    }
+
+    const dateFromRaw = qp(url, "date_from");
+    const dateToRaw = qp(url, "date_to");
+    const dateRaw = qp(url, "date");
+
+    let date_from = dateFromRaw
+      ? normalizeDateInput(dateFromRaw, "start")
+      : undefined;
+    let date_to = dateToRaw
+      ? normalizeDateInput(dateToRaw, "end")
+      : undefined;
+
+    if (dateFromRaw && !date_from) {
+      return badRequest("date_from must be a valid date");
+    }
+    if (dateToRaw && !date_to) {
+      return badRequest("date_to must be a valid date");
+    }
+
+    if (dateRaw && !dateFromRaw && !dateToRaw) {
+      const start = normalizeDateInput(dateRaw, "start");
+      const end = normalizeDateInput(dateRaw, "end");
+      if (!start || !end) {
+        return badRequest("date must be a valid date");
+      }
+      date_from = start;
+      date_to = end;
+    }
+
+    const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+    const offsetRaw = Number.parseInt(url.searchParams.get("offset") ?? "", 10);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 20;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const { data, count, error } = await listLatestEvaluationsByAthlete({
+      org_id,
+      athlete_id,
+      limit,
+      offset,
+      scorecard_name,
+      coach_name,
+      coach_id,
+      date_from,
+      date_to,
+    });
+
+    if (error) {
+      console.error("[handleLatestEvaluationsByAthlete] list error", error);
+      return internalError(error);
+    }
+
+    const items = data.map((item) => ({
+      evaluation_id: item.evaluation_id,
+      date: formatEvaluationDate(item.created_at),
+      scorecard_name: item.scorecard_name,
+      coach_name: item.coach_name,
+      athlete_id: item.athlete_id,
+      athlete_full_name: item.athlete_full_name,
+    }));
+
+    return json(200, {
+      ok: true,
+      count,
+      data: items,
+    });
+  } catch (err) {
+    console.error("[handleLatestEvaluationsByAthlete] error", err);
     return internalError(err);
   }
 }

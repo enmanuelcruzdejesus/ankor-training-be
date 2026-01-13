@@ -166,13 +166,13 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
 
   let coach_id: string | null = null;
   let athlete_id: string | null = null;
-  const profileEmail = profile.email?.trim();
+  const profileUserId = typeof profile.id === "string" ? profile.id.trim() : "";
 
-  if (profile.role === "coach" && profileEmail) {
+  if (profile.role === "coach" && profileUserId) {
     const { data: coachRow, error: coachErr } = await sbAdmin
       .from("coaches")
       .select("id")
-      .eq("email", profileEmail)
+      .eq("user_id", profileUserId)
       .maybeSingle();
 
     if (coachErr) {
@@ -180,11 +180,11 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
     }
 
     coach_id = coachRow?.id ?? null;
-  } else if (profile.role === "athlete" && profileEmail) {
+  } else if (profile.role === "athlete" && profileUserId) {
     const { data: athleteRow, error: athleteErr } = await sbAdmin
       .from("athletes")
       .select("id")
-      .eq("email", profileEmail)
+      .eq("user_id", profileUserId)
       .maybeSingle();
 
     if (athleteErr) {

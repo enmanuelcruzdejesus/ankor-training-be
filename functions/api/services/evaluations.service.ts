@@ -13,6 +13,27 @@ type SubmitEvaluationResult =
   | { ok: true; data: { id: string; status: string } }
   | { ok: false; error: unknown };
 
+export type LatestEvaluationRow = {
+  evaluation_id: string;
+  created_at: string | null;
+  scorecard_name: string | null;
+  coach_name: string | null;
+  athlete_id: string;
+  athlete_full_name: string | null;
+};
+
+export type LatestEvaluationsFilters = {
+  org_id: string;
+  athlete_id: string;
+  limit: number;
+  offset: number;
+  scorecard_name?: string;
+  coach_name?: string;
+  coach_id?: string;
+  date_from?: string;
+  date_to?: string;
+};
+
 
 export async function rpcBulkCreateEvaluations(args: {
   evaluations: EvaluationInput[];
@@ -121,6 +142,97 @@ export async function listEvaluations(org_id?: string): Promise<{
   })
 
   return { data: mapped, error: null }
+}
+
+export async function listLatestEvaluationsByAthlete(
+  filters: LatestEvaluationsFilters,
+): Promise<{ data: LatestEvaluationRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const {
+    org_id,
+    athlete_id,
+    limit,
+    offset,
+    scorecard_name,
+    coach_name,
+    coach_id,
+    date_from,
+    date_to,
+  } = filters;
+
+  let query = client
+    .from("evaluations")
+    .select(
+      `
+      id,
+      created_at,
+      coach:coaches!inner (
+        id,
+        full_name
+      ),
+      scorecard_template:scorecard_templates!inner (
+        id,
+        name
+      ),
+      evaluation_items!inner (
+        athlete_id,
+        athlete:athletes!inner (
+          id,
+          full_name
+        )
+      )
+    `,
+      { count: "exact" },
+    )
+    .eq("org_id", org_id)
+    .eq("evaluation_items.athlete_id", athlete_id)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + (limit - 1));
+
+  if (scorecard_name) {
+    query = query.ilike("scorecard_templates.name", `%${scorecard_name}%`);
+  }
+  if (coach_id) {
+    query = query.eq("coach_id", coach_id);
+  } else if (coach_name) {
+    query = query.ilike("coaches.full_name", `%${coach_name}%`);
+  }
+  if (date_from) {
+    query = query.gte("created_at", date_from);
+  }
+  if (date_to) {
+    query = query.lte("created_at", date_to);
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const items = (data ?? []).map((row: any) => {
+    const evaluationItems = Array.isArray(row.evaluation_items)
+      ? row.evaluation_items
+      : row.evaluation_items
+      ? [row.evaluation_items]
+      : [];
+    const firstItem = evaluationItems[0] ?? null;
+    const athlete = firstItem?.athlete ?? null;
+
+    return {
+      evaluation_id: row.id,
+      created_at: row.created_at ?? null,
+      scorecard_name: row.scorecard_template?.name ?? null,
+      coach_name: row.coach?.full_name ?? null,
+      athlete_id: firstItem?.athlete_id ?? athlete_id,
+      athlete_full_name: athlete?.full_name ?? null,
+    };
+  });
+
+  return { data: items, count: count ?? items.length, error: null };
 }
 
 export async function getEvaluationById(

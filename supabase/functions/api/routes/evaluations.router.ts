@@ -2,6 +2,7 @@ import { Router } from "./router.ts";
 import {
   bulkCreateEvaluationsController,
   handleEvaluationsList,
+  handleLatestEvaluationsByAthlete,
   handleEvaluationById,
   updateEvaluationMatrixController,
   handleSubmitEvaluation,
@@ -27,6 +28,12 @@ export function createEvaluationsRouter(): Router {
     "list",
     handleEvaluationsList,
     [orgRoleGuardFromQuery("org_id", ["coach"])],
+  );
+  router.add(
+    "GET",
+    "latest",
+    handleLatestEvaluationsByAthlete,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
   );
   router.add(
     "GET",
