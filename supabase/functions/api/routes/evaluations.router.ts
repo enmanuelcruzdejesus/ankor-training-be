@@ -3,6 +3,13 @@ import {
   bulkCreateEvaluationsController,
   handleEvaluationsList,
   handleLatestEvaluationsByAthlete,
+  handleEvaluationAthletesById,
+  handleEvaluationImprovementSkills,
+  handleEvaluationSkillVideos,
+  handleEvaluationSubskillRatings,
+  handleEvaluationWorkoutProgress,
+  handleIncrementWorkoutProgress,
+  handleEvaluationWorkoutDrills,
   handleEvaluationById,
   updateEvaluationMatrixController,
   handleSubmitEvaluation,
@@ -33,6 +40,48 @@ export function createEvaluationsRouter(): Router {
     "GET",
     "latest",
     handleLatestEvaluationsByAthlete,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    "latest/by-evaluation",
+    handleEvaluationAthletesById,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id/improvement-skills",
+    handleEvaluationImprovementSkills,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id/skill-videos",
+    handleEvaluationSkillVideos,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id/subskill-ratings",
+    handleEvaluationSubskillRatings,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id/workout-progress",
+    handleEvaluationWorkoutProgress,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id/workout-drills",
+    handleEvaluationWorkoutDrills,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "POST",
+    ":id/workout-progress",
+    handleIncrementWorkoutProgress,
     [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
   );
   router.add(

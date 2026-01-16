@@ -34,6 +34,115 @@ export type LatestEvaluationsFilters = {
   date_to?: string;
 };
 
+export type EvaluationAthleteRow = {
+  evaluation_id: string;
+  created_at: string | null;
+  scorecard_name: string | null;
+  coach_name: string | null;
+  athlete_id: string;
+  athlete_full_name: string | null;
+  athletes_name: string | null;
+};
+
+export type EvaluationAthletesByIdFilters = {
+  org_id: string;
+  evaluation_id: string;
+  athlete_id?: string;
+  limit: number;
+  offset: number;
+};
+
+export type EvaluationImprovementSkillRow = {
+  evaluation_id: string;
+  skill_id: string;
+  skill_name: string | null;
+  rating: number | null;
+};
+
+export type EvaluationImprovementSkillFilters = {
+  org_id: string;
+  evaluation_id: string;
+  athlete_id: string;
+  limit: number;
+  offset: number;
+  rating_max: number;
+};
+
+export type EvaluationSkillVideoRow = {
+  evaluation_id: string;
+  skill_id: string;
+  title: string | null;
+  object_path: string | null;
+  rating: number | null;
+};
+
+export type EvaluationSkillVideoFilters = {
+  org_id: string;
+  evaluation_id: string;
+  athlete_id: string;
+  rating_max: number;
+};
+
+export type EvaluationSubskillRatingRow = {
+  evaluation_id: string;
+  skill_id: string;
+  skill_descrip: string | null;
+  category_id: string;
+  category_descrip: string | null;
+  rating: number | null;
+};
+
+export type EvaluationSubskillRatingFilters = {
+  org_id: string;
+  evaluation_id: string;
+  athlete_id: string;
+  rating_max: number;
+};
+
+export type EvaluationWorkoutProgressRow = {
+  id: string;
+  org_id: string;
+  evaluation_id: string;
+  athlete_id: string;
+  progress: number | null;
+  level: number | null;
+  maxWorkoutReps: number | null;
+};
+
+export type EvaluationWorkoutProgressFilters = {
+  org_id: string;
+  athlete_id: string;
+  evaluation_id?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type EvaluationWorkoutProgressUpdateInput = {
+  org_id: string;
+  athlete_id: string;
+  evaluation_id: string;
+};
+
+export type EvaluationWorkoutDrillsFilters = {
+  org_id: string;
+  athlete_id: string;
+  evaluation_id: string;
+};
+
+export type EvaluationWorkoutDrillVideo = {
+  id: string;
+  title: string;
+  duration: string;
+  thumbnailUrl: string | null;
+};
+
+export type EvaluationWorkoutDrillLevel = {
+  level: number;
+  title: string;
+  targetReps: number | null;
+  drills: EvaluationWorkoutDrillVideo[];
+};
+
 
 export async function rpcBulkCreateEvaluations(args: {
   evaluations: EvaluationInput[];
@@ -165,74 +274,920 @@ export async function listLatestEvaluationsByAthlete(
   } = filters;
 
   let query = client
-    .from("evaluations")
+    .from("evaluation_items")
     .select(
       `
-      id,
-      created_at,
-      coach:coaches!inner (
+      evaluation_id,
+      evaluation:evaluations!inner (
         id,
-        full_name
-      ),
-      scorecard_template:scorecard_templates!inner (
-        id,
-        name
-      ),
-      evaluation_items!inner (
-        athlete_id,
-        athlete:athletes!inner (
+        org_id,
+        created_at,
+        coach:coaches!inner (
           id,
           full_name
+        ),
+        scorecard_template:scorecard_templates!inner (
+          id,
+          name
         )
+      ),
+      athlete:athletes!inner (
+        id,
+        full_name
       )
     `,
-      { count: "exact" },
     )
-    .eq("org_id", org_id)
-    .eq("evaluation_items.athlete_id", athlete_id)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + (limit - 1));
+    .eq("athlete_id", athlete_id)
+    .eq("evaluations.org_id", org_id);
 
   if (scorecard_name) {
     query = query.ilike("scorecard_templates.name", `%${scorecard_name}%`);
   }
   if (coach_id) {
-    query = query.eq("coach_id", coach_id);
+    query = query.eq("evaluations.coach_id", coach_id);
   } else if (coach_name) {
     query = query.ilike("coaches.full_name", `%${coach_name}%`);
   }
   if (date_from) {
-    query = query.gte("created_at", date_from);
+    query = query.gte("evaluations.created_at", date_from);
   }
   if (date_to) {
-    query = query.lte("created_at", date_to);
+    query = query.lte("evaluations.created_at", date_to);
   }
 
-  const { data, error, count } = await query;
+  const { data, error } = await query;
   if (error) {
     return { data: [], count: 0, error };
   }
 
-  const items = (data ?? []).map((row: any) => {
-    const evaluationItems = Array.isArray(row.evaluation_items)
+  const grouped = new Map<string, LatestEvaluationRow>();
+
+  for (const row of data ?? []) {
+    const evaluation = row?.evaluation ?? null;
+    if (!evaluation) continue;
+    if (evaluation.org_id && evaluation.org_id !== org_id) continue;
+
+    const athlete = row?.athlete ?? null;
+    const athleteId = athlete?.id ?? athlete_id;
+    const evaluationId = row?.evaluation_id ?? evaluation?.id;
+    if (!evaluationId || !athleteId) continue;
+
+    const key = `${evaluationId}:${athleteId}`;
+    if (grouped.has(key)) continue;
+
+    grouped.set(key, {
+      evaluation_id: evaluationId,
+      created_at: evaluation.created_at ?? null,
+      scorecard_name: evaluation.scorecard_template?.name ?? null,
+      coach_name: evaluation.coach?.full_name ?? null,
+      athlete_id: athleteId,
+      athlete_full_name: athlete?.full_name ?? null,
+    });
+  }
+
+  const allItems = Array.from(grouped.values());
+  allItems.sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+    return bTime - aTime;
+  });
+
+  const paged = allItems.slice(offset, offset + limit);
+
+  return { data: paged, count: allItems.length, error: null };
+}
+
+export async function listEvaluationAthletesById(
+  filters: EvaluationAthletesByIdFilters,
+): Promise<{ data: EvaluationAthleteRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, evaluation_id, athlete_id, limit, offset } = filters;
+
+  let query = client
+    .from("evaluation_items")
+    .select(
+      `
+      evaluation_id,
+      evaluation:evaluation_id (
+        id,
+        org_id,
+        created_at,
+        coach:coach_id (
+          id,
+          full_name
+        ),
+        scorecard_template:template_id (
+          id,
+          name
+        )
+      ),
+      athlete:athlete_id (
+        id,
+        full_name
+      )
+    `,
+    )
+    .eq("evaluation_id", evaluation_id);
+
+  if (athlete_id) {
+    query = query.eq("athlete_id", athlete_id);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+  if (!data || data.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const scopedRows = (data ?? []).filter(
+    (row: any) => row?.evaluation?.org_id === org_id,
+  );
+  if (scopedRows.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const athleteMap = new Map<string, { id: string; full_name: string | null }>();
+  for (const row of scopedRows) {
+    const athleteId = row?.athlete?.id;
+    if (!athleteId) continue;
+    if (!athleteMap.has(athleteId)) {
+      athleteMap.set(athleteId, {
+        id: athleteId,
+        full_name: row?.athlete?.full_name ?? null,
+      });
+    }
+  }
+
+  const evaluation = scopedRows[0]?.evaluation ?? null;
+  const allItems = Array.from(athleteMap.values()).map((athlete) => ({
+    evaluation_id: evaluation?.id ?? evaluation_id,
+    created_at: evaluation?.created_at ?? null,
+    scorecard_name: evaluation?.scorecard_template?.name ?? null,
+    coach_name: evaluation?.coach?.full_name ?? null,
+    athlete_id: athlete.id,
+    athlete_full_name: athlete.full_name ?? null,
+    athletes_name: athlete.full_name ?? null,
+  }));
+
+  const paged = allItems.slice(offset, offset + limit);
+
+  return { data: paged, count: allItems.length, error: null };
+}
+
+export async function listEvaluationImprovementSkills(
+  filters: EvaluationImprovementSkillFilters,
+): Promise<{ data: EvaluationImprovementSkillRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, evaluation_id, athlete_id, limit, offset, rating_max } = filters;
+
+  const { data, error } = await client
+    .from("evaluations")
+    .select(
+      `
+      id,
+      created_at,
+      template:scorecard_templates!inner (
+        id
+      ),
+      evaluation_items!inner (
+        evaluation_id,
+        athlete_id,
+        subskill_id,
+        rating
+      )
+    `,
+    )
+    .eq("id", evaluation_id)
+    .eq("org_id", org_id)
+    .eq("evaluation_items.athlete_id", athlete_id)
+    .lt("evaluation_items.rating", rating_max)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const rawItems: Array<{
+    evaluation_id: string;
+    subskill_id: string;
+    rating: number | null;
+    created_at: string | null;
+  }> = [];
+
+  for (const row of data ?? []) {
+    const created_at = row?.created_at ?? null;
+    const evaluationId = row?.id ?? evaluation_id;
+    const items = Array.isArray(row?.evaluation_items)
       ? row.evaluation_items
-      : row.evaluation_items
+      : row?.evaluation_items
       ? [row.evaluation_items]
       : [];
-    const firstItem = evaluationItems[0] ?? null;
-    const athlete = firstItem?.athlete ?? null;
+
+    for (const item of items) {
+      const subskillId = item?.subskill_id;
+      if (!subskillId) continue;
+      rawItems.push({
+        evaluation_id: item?.evaluation_id ?? evaluationId,
+        subskill_id: subskillId,
+        rating: item?.rating ?? null,
+        created_at,
+      });
+    }
+  }
+
+  if (rawItems.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const skillIds = Array.from(
+    new Set(rawItems.map((item) => item.subskill_id).filter(Boolean)),
+  );
+  if (skillIds.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  // Manual join: evaluation_items.subskill_id -> scorecard_subskills.skill_id.
+  const { data: subskills, error: subskillError } = await client
+    .from("scorecard_subskills")
+    .select("skill_id")
+    .in("skill_id", skillIds);
+
+  if (subskillError) {
+    return { data: [], count: 0, error: subskillError };
+  }
+
+  const subskillSkillIds = new Set(
+    (subskills ?? [])
+      .map((row: any) => row?.skill_id)
+      .filter((value: unknown): value is string =>
+        typeof value === "string" && value.length > 0
+      ),
+  );
+
+  if (subskillSkillIds.size === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: skills, error: skillsError } = await client
+    .from("skills")
+    .select("id, title")
+    .in("id", Array.from(subskillSkillIds));
+
+  if (skillsError) {
+    return { data: [], count: 0, error: skillsError };
+  }
+
+  const skillNameById = new Map<string, string | null>();
+  for (const skill of skills ?? []) {
+    const id = skill?.id;
+    if (typeof id !== "string" || !id) continue;
+    skillNameById.set(id, skill?.title ?? null);
+  }
+
+  const joined = rawItems
+    .filter((item) => subskillSkillIds.has(item.subskill_id))
+    .filter((item) => skillNameById.has(item.subskill_id))
+    .map((item) => ({
+      evaluation_id: item.evaluation_id,
+      skill_id: item.subskill_id,
+      skill_name: skillNameById.get(item.subskill_id) ?? null,
+      rating: item.rating ?? null,
+      created_at: item.created_at ?? null,
+    }));
+
+  joined.sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+    return bTime - aTime;
+  });
+
+  const paged = joined.slice(offset, offset + limit);
+
+  return {
+    data: paged.map(({ created_at, ...rest }) => rest),
+    count: joined.length,
+    error: null,
+  };
+}
+
+export async function listEvaluationSkillVideos(
+  filters: EvaluationSkillVideoFilters,
+): Promise<{ data: EvaluationSkillVideoRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, evaluation_id, athlete_id, rating_max } = filters;
+
+  const { data, error } = await client
+    .from("evaluations")
+    .select(
+      `
+      id,
+      created_at,
+      template:scorecard_templates!inner (
+        id
+      ),
+      evaluation_items!inner (
+        evaluation_id,
+        athlete_id,
+        subskill_id,
+        rating
+      )
+    `,
+    )
+    .eq("id", evaluation_id)
+    .eq("org_id", org_id)
+    .eq("evaluation_items.athlete_id", athlete_id)
+    .lt("evaluation_items.rating", rating_max)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const rawItems: Array<{
+    evaluation_id: string;
+    skill_id: string;
+    created_at: string | null;
+    rating: number | null;
+  }> = [];
+
+  for (const row of data ?? []) {
+    const created_at = row?.created_at ?? null;
+    const evaluationId = row?.id ?? evaluation_id;
+    const items = Array.isArray(row?.evaluation_items)
+      ? row.evaluation_items
+      : row?.evaluation_items
+      ? [row.evaluation_items]
+      : [];
+
+    for (const item of items) {
+      const skillId = item?.subskill_id;
+      if (!skillId) continue;
+      rawItems.push({
+        evaluation_id: item?.evaluation_id ?? evaluationId,
+        skill_id: skillId,
+        created_at,
+        rating: item?.rating ?? null,
+      });
+    }
+  }
+
+  if (rawItems.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const skillIds = Array.from(
+    new Set(rawItems.map((item) => item.skill_id).filter(Boolean)),
+  );
+  if (skillIds.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: subskills, error: subskillError } = await client
+    .from("scorecard_subskills")
+    .select("skill_id")
+    .in("skill_id", skillIds);
+
+  if (subskillError) {
+    return { data: [], count: 0, error: subskillError };
+  }
+
+  const subskillSkillIds = new Set(
+    (subskills ?? [])
+      .map((row: any) => row?.skill_id)
+      .filter((value: unknown): value is string =>
+        typeof value === "string" && value.length > 0
+      ),
+  );
+
+  if (subskillSkillIds.size === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: skills, error: skillsError } = await client
+    .from("skills")
+    .select("id, title")
+    .in("id", Array.from(subskillSkillIds));
+
+  if (skillsError) {
+    return { data: [], count: 0, error: skillsError };
+  }
+
+  const titleById = new Map<string, string | null>();
+  for (const skill of skills ?? []) {
+    const id = skill?.id;
+    if (typeof id !== "string" || !id) continue;
+    titleById.set(id, skill?.title ?? null);
+  }
+
+  if (titleById.size === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: videoRows, error: videoError } = await client
+    .from("skill_video_map")
+    .select("skill_id, object_path")
+    .in("skill_id", Array.from(titleById.keys()));
+
+  if (videoError) {
+    return { data: [], count: 0, error: videoError };
+  }
+
+  const videosBySkill = new Map<string, Array<string | null>>();
+  for (const row of videoRows ?? []) {
+    const skillId = row?.skill_id;
+    if (typeof skillId !== "string" || !skillId) continue;
+    if (!videosBySkill.has(skillId)) {
+      videosBySkill.set(skillId, []);
+    }
+    videosBySkill.get(skillId)!.push(row?.object_path ?? null);
+  }
+
+  const filtered = rawItems.filter(
+    (item) => subskillSkillIds.has(item.skill_id) && titleById.has(item.skill_id),
+  );
+
+  const results: Array<EvaluationSkillVideoRow & { created_at: string | null }> = [];
+  for (const item of filtered) {
+    const videos = videosBySkill.get(item.skill_id);
+    if (!videos || videos.length === 0) continue;
+    const title = titleById.get(item.skill_id) ?? null;
+    for (const object_path of videos) {
+      results.push({
+        evaluation_id: item.evaluation_id,
+        skill_id: item.skill_id,
+        title,
+        object_path,
+        rating: item.rating ?? null,
+        created_at: item.created_at ?? null,
+      });
+    }
+  }
+
+  results.sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+    return bTime - aTime;
+  });
+
+  return {
+    data: results.map(({ created_at, ...rest }) => rest),
+    count: results.length,
+    error: null,
+  };
+}
+
+export async function listEvaluationSubskillRatings(
+  filters: EvaluationSubskillRatingFilters,
+): Promise<{ data: EvaluationSubskillRatingRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, evaluation_id, athlete_id, rating_max } = filters;
+
+  const { data, error } = await client
+    .from("evaluations")
+    .select(
+      `
+      id,
+      created_at,
+      template:scorecard_templates!inner (
+        id
+      ),
+      evaluation_items!inner (
+        evaluation_id,
+        athlete_id,
+        subskill_id,
+        rating
+      )
+    `,
+    )
+    .eq("id", evaluation_id)
+    .eq("org_id", org_id)
+    .eq("evaluation_items.athlete_id", athlete_id)   
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const rawItems: Array<{
+    evaluation_id: string;
+    skill_id: string;
+    rating: number | null;
+    created_at: string | null;
+  }> = [];
+
+  for (const row of data ?? []) {
+    const created_at = row?.created_at ?? null;
+    const evaluationId = row?.id ?? evaluation_id;
+    const items = Array.isArray(row?.evaluation_items)
+      ? row.evaluation_items
+      : row?.evaluation_items
+      ? [row.evaluation_items]
+      : [];
+
+    for (const item of items) {
+      const skillId = item?.subskill_id;
+      if (!skillId) continue;
+      rawItems.push({
+        evaluation_id: item?.evaluation_id ?? evaluationId,
+        skill_id: skillId,
+        rating: item?.rating ?? null,
+        created_at,
+      });
+    }
+  }
+
+  if (rawItems.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const skillIds = Array.from(
+    new Set(rawItems.map((item) => item.skill_id).filter(Boolean)),
+  );
+  if (skillIds.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: subskills, error: subskillError } = await client
+    .from("scorecard_subskills")
+    .select("skill_id, category_id")
+    .in("skill_id", skillIds);
+
+  if (subskillError) {
+    return { data: [], count: 0, error: subskillError };
+  }
+
+  const categoryIdsBySkill = new Map<string, Set<string>>();
+  const categoryIds = new Set<string>();
+  for (const row of subskills ?? []) {
+    const skillId = row?.skill_id;
+    const categoryId = row?.category_id;
+    if (typeof skillId !== "string" || !skillId) continue;
+    if (typeof categoryId !== "string" || !categoryId) continue;
+    if (!categoryIdsBySkill.has(skillId)) {
+      categoryIdsBySkill.set(skillId, new Set<string>());
+    }
+    categoryIdsBySkill.get(skillId)!.add(categoryId);
+    categoryIds.add(categoryId);
+  }
+
+  if (categoryIdsBySkill.size === 0 || categoryIds.size === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: skills, error: skillsError } = await client
+    .from("skills")
+    .select("id, title")
+    .in("id", Array.from(categoryIdsBySkill.keys()));
+
+  if (skillsError) {
+    return { data: [], count: 0, error: skillsError };
+  }
+
+  const skillTitleById = new Map<string, string | null>();
+  for (const skill of skills ?? []) {
+    const id = skill?.id;
+    if (typeof id !== "string" || !id) continue;
+    skillTitleById.set(id, skill?.title ?? null);
+  }
+
+  const { data: categories, error: categoriesError } = await client
+    .from("scorecard_categories")
+    .select("id, name")
+    .in("id", Array.from(categoryIds));
+
+  if (categoriesError) {
+    return { data: [], count: 0, error: categoriesError };
+  }
+
+  const categoryNameById = new Map<string, string | null>();
+  for (const category of categories ?? []) {
+    const id = category?.id;
+    if (typeof id !== "string" || !id) continue;
+    categoryNameById.set(id, category?.name ?? null);
+  }
+
+  const results: Array<EvaluationSubskillRatingRow & { created_at: string | null }> = [];
+  for (const item of rawItems) {
+    const categoriesForSkill = categoryIdsBySkill.get(item.skill_id);
+    const skillTitle = skillTitleById.get(item.skill_id);
+    if (!categoriesForSkill || !skillTitleById.has(item.skill_id)) continue;
+
+    for (const categoryId of categoriesForSkill) {
+      if (!categoryNameById.has(categoryId)) continue;
+      results.push({
+        evaluation_id: item.evaluation_id,
+        skill_id: item.skill_id,
+        skill_descrip: skillTitle ?? null,
+        category_id: categoryId,
+        category_descrip: categoryNameById.get(categoryId) ?? null,
+        rating: item.rating ?? null,
+        created_at: item.created_at ?? null,
+      });
+    }
+  }
+
+  results.sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+    return bTime - aTime;
+  });
+
+  return {
+    data: results.map(({ created_at, ...rest }) => rest),
+    count: results.length,
+    error: null,
+  };
+}
+
+export async function listEvaluationWorkoutProgress(
+  filters: EvaluationWorkoutProgressFilters,
+): Promise<{ data: EvaluationWorkoutProgressRow[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const {
+    org_id,
+    athlete_id,
+    evaluation_id,
+    limit = 200,
+    offset = 0,
+  } = filters;
+
+  let query = client
+    .from("evaluation_workout_progress")
+    .select(
+      `
+      id,
+      org_id,
+      evaluation_id,
+      athlete_id,
+      progress,
+      level,
+      organizations!inner (
+        maxWorkoutReps
+      )
+    `,
+      { count: "exact" },
+    )
+    .eq("org_id", org_id)
+    .eq("athlete_id", athlete_id);
+
+  if (evaluation_id) {
+    query = query.eq("evaluation_id", evaluation_id);
+  }
+
+  const rangeTo = offset + (limit - 1);
+  const { data, error, count } = await query.range(offset, rangeTo);
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const mapped = (data ?? []).map((row: any) => {
+    const organization = Array.isArray(row?.organizations)
+      ? row.organizations[0]
+      : row?.organizations;
 
     return {
-      evaluation_id: row.id,
-      created_at: row.created_at ?? null,
-      scorecard_name: row.scorecard_template?.name ?? null,
-      coach_name: row.coach?.full_name ?? null,
-      athlete_id: firstItem?.athlete_id ?? athlete_id,
-      athlete_full_name: athlete?.full_name ?? null,
+      id: row?.id,
+      org_id: row?.org_id,
+      evaluation_id: row?.evaluation_id,
+      athlete_id: row?.athlete_id,
+      progress: row?.progress ?? null,
+      level: row?.level ?? null,
+      maxWorkoutReps: organization?.maxWorkoutReps ?? null,
     };
   });
 
-  return { data: items, count: count ?? items.length, error: null };
+  return { data: mapped, count: count ?? mapped.length, error: null };
+}
+
+export async function incrementEvaluationWorkoutProgress(
+  input: EvaluationWorkoutProgressUpdateInput,
+): Promise<{ data: EvaluationWorkoutProgressRow | null; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, athlete_id, evaluation_id } = input;
+
+  const { data: row, error } = await client
+    .from("evaluation_workout_progress")
+    .select(
+      `
+      id,
+      org_id,
+      evaluation_id,
+      athlete_id,
+      progress,
+      level,
+      organizations!inner (
+        maxWorkoutReps
+      )
+    `,
+    )
+    .eq("org_id", org_id)
+    .eq("athlete_id", athlete_id)
+    .eq("evaluation_id", evaluation_id)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  if (!row?.id) {
+    return { data: null, error: new Error("Workout progress not found") };
+  }
+
+  const organization = Array.isArray(row?.organizations)
+    ? row.organizations[0]
+    : row?.organizations;
+  const maxWorkoutRepsRaw = organization?.maxWorkoutReps;
+  const maxWorkoutReps = Number(maxWorkoutRepsRaw);
+
+  if (!Number.isFinite(maxWorkoutReps) || maxWorkoutReps <= 0) {
+    return {
+      data: null,
+      error: new Error("maxWorkoutReps must be a positive number"),
+    };
+  }
+
+  const progressValue = Number.isFinite(Number(row.progress))
+    ? Number(row.progress)
+    : 0;
+  const levelValue = Number.isFinite(Number(row.level))
+    ? Number(row.level)
+    : 0;
+
+  let nextProgress = progressValue + 1;
+  let nextLevel = levelValue;
+
+  if (nextProgress >= maxWorkoutReps) {
+     nextProgress = 0;
+     nextLevel = levelValue + 1;
+  }
+
+  const { data: updated, error: updateError } = await client
+    .from("evaluation_workout_progress")
+    .update({ progress: nextProgress, level: nextLevel })
+    .eq("id", row.id)
+    .select("id, org_id, evaluation_id, athlete_id, progress, level")
+    .maybeSingle();
+
+  if (updateError) {
+    return { data: null, error: updateError };
+  }
+
+  if (!updated) {
+    return { data: null, error: new Error("Workout progress not found") };
+  }
+
+  return {
+    data: {
+      id: updated.id,
+      org_id: updated.org_id,
+      evaluation_id: updated.evaluation_id,
+      athlete_id: updated.athlete_id,
+      progress: updated.progress ?? null,
+      level: updated.level ?? null,
+      maxWorkoutReps,
+    },
+    error: null,
+  };
+}
+
+export async function listEvaluationWorkoutDrills(
+  filters: EvaluationWorkoutDrillsFilters,
+): Promise<{ data: EvaluationWorkoutDrillLevel[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, athlete_id, evaluation_id } = filters;
+
+  const { data: progressRow, error: progressError } = await client
+    .from("evaluation_workout_progress")
+    .select("level, progress")
+    .eq("org_id", org_id)
+    .eq("athlete_id", athlete_id)
+    .eq("evaluation_id", evaluation_id)
+    .maybeSingle();
+
+  if (progressError) {
+    return { data: [], count: 0, error: progressError };
+  }
+
+  const level =
+    typeof progressRow?.level === "number" && Number.isFinite(progressRow.level)
+      ? progressRow.level
+      : null;
+
+  if (level === null) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const { data: drillRows, error: drillsError } = await client
+    .from("evaluation_workout_drills")
+    .select("drill_id, level")
+    .eq("org_id", org_id)
+    .eq("athlete_id", athlete_id)
+    .eq("evaluation_id", evaluation_id)
+    .eq("level", level);
+
+  if (drillsError) {
+    return { data: [], count: 0, error: drillsError };
+  }
+
+  const rows = Array.isArray(drillRows) ? drillRows : [];
+  if (rows.length === 0) {
+    return { data: [], count: 0, error: null };
+  }
+
+  const drillIds = Array.from(
+    new Set(
+      rows
+        .map((row: any) => row?.drill_id)
+        .filter((id: unknown): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+
+  const mediaByDrill = new Map<string, { title: string; thumbnailUrl: string | null }>();
+  if (drillIds.length > 0) {
+    const { data: mediaRows, error: mediaError } = await client
+      .from("drill_media")
+      .select("drill_id, title, thumbnail_url, sort_order, media_type")
+      .in("drill_id", drillIds)
+      .order("sort_order", { ascending: true });
+
+    if (mediaError) {
+      return { data: [], count: 0, error: mediaError };
+    }
+
+    for (const row of mediaRows ?? []) {
+      const drillId = row?.drill_id;
+      if (!drillId || mediaByDrill.has(drillId)) continue;
+      mediaByDrill.set(drillId, {
+        title: typeof row?.title === "string" ? row.title : "",
+        thumbnailUrl: row?.thumbnail_url ?? null,
+      });
+    }
+  }
+
+  const targetReps =
+    typeof progressRow?.progress === "number" && Number.isFinite(progressRow.progress)
+      ? progressRow.progress
+      : null;
+
+  const drills: EvaluationWorkoutDrillVideo[] = rows
+    .map((row: any) => {
+      const drillId = row?.drill_id;
+      if (typeof drillId !== "string" || !drillId) return null;
+      const media = mediaByDrill.get(drillId);
+      return {
+        id: drillId,
+        title: media?.title ?? "",
+        duration: "30",
+        thumbnailUrl: media?.thumbnailUrl ?? null,
+      };
+    })
+    .filter((item: EvaluationWorkoutDrillVideo | null): item is EvaluationWorkoutDrillVideo =>
+      Boolean(item)
+    );
+
+  return {
+    data: [
+      {
+        level,
+        title: `Level ${level}`,
+        targetReps,
+        drills,
+      },
+    ],
+    count: 1,
+    error: null,
+  };
 }
 
 export async function getEvaluationById(

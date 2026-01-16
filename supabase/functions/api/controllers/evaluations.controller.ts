@@ -6,6 +6,13 @@ import {
   rpcBulkCreateEvaluations,
   listEvaluations,
   listLatestEvaluationsByAthlete,
+  listEvaluationAthletesById,
+  listEvaluationImprovementSkills,
+  listEvaluationSkillVideos,
+  listEvaluationSubskillRatings,
+  listEvaluationWorkoutProgress,
+  incrementEvaluationWorkoutProgress,
+  listEvaluationWorkoutDrills,
   getEvaluationById,
   applyEvaluationMatrixUpdateService,
   submitEvaluation,
@@ -374,6 +381,448 @@ export async function handleLatestEvaluationsByAthlete(
     });
   } catch (err) {
     console.error("[handleLatestEvaluationsByAthlete] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationAthletesById(
+  req: Request,
+  _origin?: string | null,
+  _params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (athlete_id && !RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+    const offsetRaw = Number.parseInt(url.searchParams.get("offset") ?? "", 10);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 200;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const { data, count, error } = await listEvaluationAthletesById({
+      org_id,
+      evaluation_id,
+      athlete_id: athlete_id || undefined,
+      limit,
+      offset,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationAthletesById] list error", error);
+      return internalError(error);
+    }
+
+    const items = data.map((item) => ({
+      evaluation_id: item.evaluation_id,
+      date: formatEvaluationDate(item.created_at),
+      scorecard_name: item.scorecard_name,
+      coach_name: item.coach_name,
+      athlete_id: item.athlete_id,
+      athlete_full_name: item.athlete_full_name,
+      athletes_name: item.athletes_name,
+    }));
+
+    return json(200, {
+      ok: true,
+      count,
+      data: items,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationAthletesById] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationImprovementSkills(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+    const offsetRaw = Number.parseInt(url.searchParams.get("offset") ?? "", 10);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 3;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const { data, count, error } = await listEvaluationImprovementSkills({
+      org_id,
+      evaluation_id,
+      athlete_id,
+      limit,
+      offset,
+      rating_max: 3,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationImprovementSkills] list error", error);
+      return internalError(error);
+    }
+
+    return json(200, {
+      ok: true,
+      count,
+      data,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationImprovementSkills] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationSkillVideos(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    const { data, count, error } = await listEvaluationSkillVideos({
+      org_id,
+      evaluation_id,
+      athlete_id,
+      rating_max: 3,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationSkillVideos] list error", error);
+      return internalError(error);
+    }
+
+    return json(200, {
+      ok: true,
+      count,
+      data,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationSkillVideos] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationSubskillRatings(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    const { data, count, error } = await listEvaluationSubskillRatings({
+      org_id,
+      evaluation_id,
+      athlete_id,
+      rating_max: 3,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationSubskillRatings] list error", error);
+      return internalError(error);
+    }
+
+    const grouped = new Map<
+      string,
+      { id: string; name: string; subskills: Array<{ id: string; name: string; score: number }> }
+    >();
+
+    for (const row of data) {
+      if (!row.category_id) continue;
+      const categoryName = row.category_descrip ?? "";
+      let category = grouped.get(row.category_id);
+      if (!category) {
+        category = {
+          id: row.category_id,
+          name: categoryName,
+          subskills: [],
+        };
+        grouped.set(row.category_id, category);
+      }
+
+      const score =
+        typeof row.rating === "number" && Number.isFinite(row.rating)
+          ? row.rating
+          : null;
+      if (score === null) continue;
+      if (!row.skill_id) continue;
+
+      category.subskills.push({
+        id: row.skill_id,
+        name: row.skill_descrip ?? "",
+        score,
+      });
+    }
+
+    const payload = Array.from(grouped.values());
+
+    return json(200, {
+      ok: true,
+      count: payload.length,
+      data: payload,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationSubskillRatings] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationWorkoutProgress(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+    const offsetRaw = Number.parseInt(url.searchParams.get("offset") ?? "", 10);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 200;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const { data, count, error } = await listEvaluationWorkoutProgress({
+      org_id,
+      athlete_id,
+      evaluation_id,
+      limit,
+      offset,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationWorkoutProgress] list error", error);
+      return internalError(error);
+    }
+
+    return json(200, {
+      ok: true,
+      count,
+      data,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationWorkoutProgress] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleIncrementWorkoutProgress(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "POST") {
+      return methodNotAllowed(["POST"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const { data, error } = await incrementEvaluationWorkoutProgress({
+      org_id,
+      athlete_id,
+      evaluation_id,
+    });
+
+    if (error) {
+      const message =
+        error instanceof Error ? error.message : "Internal Server Error";
+      if (message.toLowerCase().includes("not found")) {
+        return jsonResponse({ ok: false, error: message }, { status: 404 });
+      }
+      if (message.toLowerCase().includes("maxworkoutreps")) {
+        return badRequest(message);
+      }
+      console.error("[handleIncrementWorkoutProgress] error", error);
+      return internalError(error);
+    }
+
+    return json(200, {
+      ok: true,
+      data,
+    });
+  } catch (err) {
+    console.error("[handleIncrementWorkoutProgress] error", err);
+    return internalError(err);
+  }
+}
+
+export async function handleEvaluationWorkoutDrills(
+  req: Request,
+  _origin?: string | null,
+  params?: Record<string, string>,
+  ctx?: RequestContext,
+): Promise<Response> {
+  try {
+    if (req.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+
+    const url = new URL(req.url);
+    const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+    if (!RE_UUID.test(org_id)) {
+      return badRequest("org_id (UUID) is required");
+    }
+
+    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
+    if (!RE_UUID.test(athlete_id)) {
+      return badRequest("athlete_id (UUID) is required");
+    }
+
+    let evaluation_id = (params?.id ?? "").trim();
+    if (!evaluation_id) {
+      evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    }
+    if (!RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    const { data, count, error } = await listEvaluationWorkoutDrills({
+      org_id,
+      athlete_id,
+      evaluation_id,
+    });
+
+    if (error) {
+      console.error("[handleEvaluationWorkoutDrills] error", error);
+      return internalError(error);
+    }
+
+    return json(200, {
+      ok: true,
+      count,
+      data,
+    });
+  } catch (err) {
+    console.error("[handleEvaluationWorkoutDrills] error", err);
     return internalError(err);
   }
 }
