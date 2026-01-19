@@ -699,9 +699,10 @@ export async function listEvaluationSkillVideos(
   }
 
   const { data: videoRows, error: videoError } = await client
-    .from("skill_video_map")
-    .select("skill_id, object_path")
-    .in("skill_id", Array.from(titleById.keys()));
+    .from("skill_media")
+    .select("skill_id, url, storage_path, media_type")
+    .in("skill_id", Array.from(titleById.keys()))
+    .eq("media_type", "video");
 
   if (videoError) {
     return { data: [], count: 0, error: videoError };
@@ -714,7 +715,11 @@ export async function listEvaluationSkillVideos(
     if (!videosBySkill.has(skillId)) {
       videosBySkill.set(skillId, []);
     }
-    videosBySkill.get(skillId)!.push(row?.object_path ?? null);
+    const url = typeof row?.url === "string" ? row.url : null;
+    const storagePath = typeof row?.storage_path === "string"
+      ? row.storage_path
+      : null;
+    videosBySkill.get(skillId)!.push(url ?? storagePath);
   }
 
   const filtered = rawItems.filter(

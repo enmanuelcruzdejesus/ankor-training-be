@@ -1,16 +1,68 @@
-// src/routes/skills.router.ts
 import { Router } from "./router.ts";
-import { handleSkillsList } from "../controllers/skills.controller.ts";
-import { orgRoleGuardFromQuery } from "../utils/guards.ts";
+import {
+  createSkillController,
+  createSkillMediaController,
+  createSkillMediaUploadUrlController,
+  getSkillMediaPlaybackController,
+  updateSkillController,
+  listSkillsController,
+  listSkillTagsController,
+  getSkillByIdController,
+} from "../controllers/skills.controller.ts";
+import {
+  orgRoleGuardFromBody,
+  orgRoleGuardFromQuery,
+} from "../utils/guards.ts";
 
 export function createSkillsRouter(): Router {
   const router = new Router();
 
-  // GET /api/skills/list
+  router.add(
+    "POST",
+    "",
+    createSkillController,
+    [orgRoleGuardFromBody("org_id", ["coach"])],
+  );
+  router.add(
+    "POST",
+    "media/upload-url",
+    createSkillMediaUploadUrlController,
+    [orgRoleGuardFromBody("org_id", ["coach"])],
+  );
+  router.add(
+    "POST",
+    "media",
+    createSkillMediaController,
+    [orgRoleGuardFromBody("org_id", ["coach"])],
+  );
+  router.add(
+    "GET",
+    "media/:skill_id/play",
+    getSkillMediaPlaybackController,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
   router.add(
     "GET",
     "list",
-    handleSkillsList,
+    listSkillsController,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    "tags",
+    listSkillTagsController,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "PATCH",
+    ":id",
+    updateSkillController,
+    [orgRoleGuardFromQuery("org_id", ["coach"])],
+  );
+  router.add(
+    "GET",
+    ":id",
+    getSkillByIdController,
     [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
   );
 
