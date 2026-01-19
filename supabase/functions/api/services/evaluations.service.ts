@@ -1040,12 +1040,13 @@ export async function incrementEvaluationWorkoutProgress(
     ? Number(row.level)
     : 0;
 
+  const maxProgress = maxWorkoutReps * 10;
   let nextProgress = progressValue + 1;
   let nextLevel = levelValue;
 
-  if (nextProgress >= maxWorkoutReps) {
-     nextProgress = 0;
-     nextLevel = levelValue + 1;
+  if (nextProgress >= maxProgress) {
+    nextProgress = 1;
+    nextLevel = levelValue + 1;
   }
 
   const { data: updated, error: updateError } = await client
