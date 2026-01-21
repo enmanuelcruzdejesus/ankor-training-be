@@ -555,7 +555,7 @@ export async function listDrills(
 }
 
 
-function mapDrillRowToDto(row: any): DrillDto {
+export function mapDrillRowToDto(row: any): DrillDto {
   const media: DrillMediaDto[] = (row.drill_media ?? []).map((m: any) => ({
     type: m.media_type ?? "video",
     url: m.url,

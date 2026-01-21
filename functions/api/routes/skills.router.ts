@@ -1,5 +1,7 @@
 import { Router } from "./router.ts";
 import {
+  addSkillDrillsController,
+  listSkillDrillsController,
   createSkillController,
   createSkillMediaController,
   createSkillMediaUploadUrlController,
@@ -58,6 +60,18 @@ export function createSkillsRouter(): Router {
     ":id",
     updateSkillController,
     [orgRoleGuardFromQuery("org_id", ["coach"])],
+  );
+  router.add(
+    "POST",
+    ":id/drills",
+    addSkillDrillsController,
+    [orgRoleGuardFromBody("org_id", ["coach"])],
+  );
+  router.add(
+    "GET",
+    ":id/drills",
+    listSkillDrillsController,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
   );
   router.add(
     "GET",

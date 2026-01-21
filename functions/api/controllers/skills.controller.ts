@@ -1,18 +1,22 @@
 import {
+  AddSkillDrillsSchema,
   CreateSkillSchema,
   CreateSkillMediaSchema,
   GetSkillByIdSchema,
+  SkillDrillListFilterSchema,
   SkillListFilterSchema,
   SkillMediaUploadSchema,
   SkillTagListFilterSchema,
   UpdateSkillSchema,
 } from "../dtos/skills.dto.ts";
 import {
+  addSkillDrills,
   createSkill,
   createSkillMedia,
   createSkillMediaUploadUrl,
   getSkillMediaPlaybackUrl,
   getSkillById,
+  listSkillDrills,
   listSkills,
   listSkillTags,
   updateSkill,
@@ -198,6 +202,62 @@ export async function getSkillByIdController(
   return json(200, { ok: true, skill: data });
 }
 
+export async function listSkillDrillsController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+  ctx?: RequestContext,
+): Promise<Response> {
+  if (req.method !== "GET") {
+    return methodNotAllowed(["GET"]);
+  }
+
+  const skill_id = params?.id;
+  if (!skill_id) {
+    return jsonResponse(
+      { ok: false, error: "Missing 'id' path parameter" },
+      { status: 400 },
+    );
+  }
+
+  const idParsed = GetSkillByIdSchema.safeParse({ skill_id });
+  if (!idParsed.success) {
+    const message = idParsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const url = new URL(req.url);
+  const org_id = (ctx?.org_id ?? url.searchParams.get("org_id") ?? "").trim();
+  if (!RE_UUID.test(org_id)) {
+    return badRequest("org_id (UUID) is required");
+  }
+
+  const rawFilters = {
+    org_id,
+    limit: qp(url, "limit"),
+    offset: qp(url, "offset"),
+  };
+  const parsed = SkillDrillListFilterSchema.safeParse(rawFilters);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => i.message).join("; ");
+    return badRequest(msg);
+  }
+
+  const { data, count, error } = await listSkillDrills(
+    idParsed.data.skill_id,
+    parsed.data,
+  );
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("skill not found")) {
+      return jsonResponse({ ok: false, error: "Skill not found" }, { status: 404 });
+    }
+    return internalError(error, "Failed to list skill drills");
+  }
+
+  return json(200, { ok: true, count, items: data });
+}
+
 export async function updateSkillController(
   req: Request,
   _origin: string | null,
@@ -256,6 +316,62 @@ export async function updateSkillController(
   }
 
   return json(200, { ok: true, skill: data });
+}
+
+export async function addSkillDrillsController(
+  req: Request,
+  _origin: string | null,
+  params?: { id?: string },
+  ctx?: RequestContext,
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  const skill_id = params?.id;
+  if (!skill_id) {
+    return jsonResponse(
+      { ok: false, error: "Missing 'id' path parameter" },
+      { status: 400 },
+    );
+  }
+
+  const idParsed = GetSkillByIdSchema.safeParse({ skill_id });
+  if (!idParsed.success) {
+    const message = idParsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return badRequest("Invalid JSON payload");
+  }
+
+  const parsed = AddSkillDrillsSchema.safeParse(raw);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return badRequest(message);
+  }
+
+  const org_id = ctx?.org_id ?? parsed.data.org_id;
+  const { data, error } = await addSkillDrills(
+    idParsed.data.skill_id,
+    org_id,
+    parsed.data.drills,
+  );
+
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("skill not found")) {
+      return jsonResponse({ ok: false, error: "Skill not found" }, { status: 404 });
+    }
+    if (message.toLowerCase().includes("drills not found")) {
+      return badRequest(message);
+    }
+    return internalError(error, "Failed to add drills to skill");
+  }
+
+  return created({ ok: true, skill_drills: data ?? [] });
 }
 
 export async function createSkillMediaUploadUrlController(

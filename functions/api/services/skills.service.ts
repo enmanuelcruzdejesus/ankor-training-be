@@ -2,6 +2,10 @@ import { sbAdmin } from "./supabase.ts";
 import {
   type CreateSkillInput,
   type CreateSkillMediaInput,
+  type SkillDrillDto,
+  type SkillDrillInput,
+  type SkillDrillListFilterInput,
+  type SkillDrillMapDto,
   type SkillDto,
   type SkillListFilterInput,
   type SkillMediaPlaybackDto,
@@ -12,6 +16,7 @@ import {
   type SkillTagListFilterInput,
   type UpdateSkillInput,
 } from "../dtos/skills.dto.ts";
+import { mapDrillRowToDto } from "./drills.service.ts";
 import { SKILLS_MEDIA_BUCKET } from "../config/env.ts";
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
@@ -494,6 +499,168 @@ export async function updateSkill(
   }
 
   return { data, error: null };
+}
+
+export async function addSkillDrills(
+  skill_id: string,
+  org_id: string,
+  drills: SkillDrillInput[],
+): Promise<{ data: SkillDrillMapDto[] | null; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: null, error: new Error("Supabase client not initialized") };
+  }
+
+  const { error: skillError } = await ensureSkillOrg(skill_id, org_id);
+  if (skillError) {
+    return { data: null, error: skillError };
+  }
+
+  const unique = new Map<string, SkillDrillInput>();
+  for (const item of drills) {
+    const drillId = item.drill_id;
+    const existing = unique.get(drillId);
+    if (!existing) {
+      unique.set(drillId, item);
+      continue;
+    }
+    const existingLevel = existing.level;
+    const incomingLevel = item.level;
+    if (
+      (existingLevel === null || existingLevel === undefined) &&
+      incomingLevel !== null &&
+      incomingLevel !== undefined
+    ) {
+      unique.set(drillId, item);
+    }
+  }
+
+  const drillIds = Array.from(unique.keys());
+  if (drillIds.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const { data: drillRows, error: drillError } = await client
+    .from("drills")
+    .select("id")
+    .eq("org_id", org_id)
+    .in("id", drillIds);
+
+  if (drillError) {
+    return { data: null, error: drillError };
+  }
+
+  const foundIds = new Set(
+    (drillRows ?? [])
+      .map((row: any) => row.id)
+      .filter((id: unknown): id is string => typeof id === "string"),
+  );
+  const missing = drillIds.filter((id) => !foundIds.has(id));
+  if (missing.length > 0) {
+    return { data: null, error: new Error(`Drills not found: ${missing.join(", ")}`) };
+  }
+
+  const rows = Array.from(unique.values()).map((item) => {
+    const row: Record<string, unknown> = {
+      skill_id,
+      drill_id: item.drill_id,
+    };
+    if (item.level !== null && item.level !== undefined) {
+      row.level = item.level;
+    }
+    return row;
+  });
+
+  const { data, error } = await client
+    .from("skill_drill_map")
+    .upsert(rows, { onConflict: "skill_id,drill_id" })
+    .select("skill_id, drill_id, level");
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  const mapped: SkillDrillMapDto[] = (data ?? []).map((row: any) => ({
+    skill_id: typeof row.skill_id === "string" ? row.skill_id : skill_id,
+    drill_id: typeof row.drill_id === "string" ? row.drill_id : "",
+    level: typeof row.level === "number" ? row.level : null,
+  }));
+
+  return { data: mapped, error: null };
+}
+
+export async function listSkillDrills(
+  skill_id: string,
+  filters: SkillDrillListFilterInput,
+): Promise<{ data: SkillDrillDto[]; count: number; error: unknown }> {
+  const client = sbAdmin;
+  if (!client) {
+    return { data: [], count: 0, error: new Error("Supabase client not initialized") };
+  }
+
+  const { org_id, limit = 50, offset = 0 } = filters;
+
+  const { error: skillError } = await ensureSkillOrg(skill_id, org_id);
+  if (skillError) {
+    return { data: [], count: 0, error: skillError };
+  }
+
+  const rangeTo = offset + (limit - 1);
+
+  const { data, error, count } = await client
+    .from("skill_drill_map")
+    .select(
+      `
+      skill_id,
+      drill_id,
+      level,
+      drills!inner(
+        id,
+        org_id,
+        segment_id,
+        name,
+        description,
+        level,
+        min_players,
+        max_players,
+        min_age,
+        max_age,
+        duration_min,
+        visibility,
+        is_archived,
+        created_at,
+        updated_at,
+        segment:segments(id, name),
+        drill_media(id, media_type, title, url, thumbnail_url, sort_order),
+        drill_tag_map(tag_id, drill_tags!inner(id, name))
+      )
+    `,
+      { count: "exact" },
+    )
+    .eq("skill_id", skill_id)
+    .eq("drills.org_id", org_id)
+    .range(offset, rangeTo)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: [], count: 0, error };
+  }
+
+  const items: SkillDrillDto[] = (data ?? [])
+    .map((row: any) => {
+      const drillRow = Array.isArray(row.drills) ? row.drills[0] : row.drills;
+      if (!drillRow) return null;
+
+      return {
+        skill_id: typeof row.skill_id === "string" ? row.skill_id : skill_id,
+        drill_id: typeof row.drill_id === "string" ? row.drill_id : drillRow.id ?? "",
+        level: typeof row.level === "number" ? row.level : null,
+        drill: mapDrillRowToDto(drillRow),
+      };
+    })
+    .filter((item): item is SkillDrillDto => Boolean(item));
+
+  return { data: items, count: count ?? items.length, error: null };
 }
 
 export async function listSkills(
