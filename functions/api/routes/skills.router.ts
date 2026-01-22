@@ -1,6 +1,6 @@
 // src/routes/skills.router.ts
 import { Router } from "./router.ts";
-import { handleSkillsList } from "../controllers/skills.controller.ts";
+import { handleSkillById, handleSkillsList } from "../controllers/skills.controller.ts";
 import { orgRoleGuardFromQuery } from "../utils/guards.ts";
 
 export function createSkillsRouter(): Router {
@@ -11,6 +11,12 @@ export function createSkillsRouter(): Router {
     "GET",
     "list",
     handleSkillsList,
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+  );
+  router.add(
+    "GET",
+    ":id",
+    handleSkillById,
     [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
   );
 

@@ -26,3 +26,19 @@ export async function listSkills(params: {
 
   return await query;
 }
+
+export async function getSkillById(params: {
+  skill_id: string;
+  org_id: string;
+}) {
+  const { skill_id, org_id } = params;
+
+  return await sbAdmin!
+    .from("skills")
+    .select(
+      "id, org_id, sport_id, category, title, description, level, visibility, status, created_at, updated_at",
+    )
+    .eq("id", skill_id)
+    .eq("org_id", org_id)
+    .maybeSingle();
+}
