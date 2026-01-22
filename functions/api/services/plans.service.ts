@@ -462,6 +462,7 @@ export async function createPlan(
   const payload: Record<string, unknown> = {
     owner_user_id: input.owner_user_id,
     org_id: input.org_id ?? null,
+    type: input.type ?? "custom",
     name: input.name.trim(),
     description: input.description ?? null,
     tags: input.tags ?? [],

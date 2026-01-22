@@ -72,6 +72,7 @@ export const PlanItemSchema = z
 export const CreatePlanSchema = z.object({
   owner_user_id: uuid(),
   org_id: uuid().optional().nullable(),
+  type: PlanListTypeSchema.default("custom"),
   name: z.string().trim().min(1, "name is required").max(200),
   description: z.string().trim().max(4000).optional().nullable(),
   visibility: PlanVisibilitySchema.optional(),

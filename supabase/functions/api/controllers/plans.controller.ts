@@ -265,11 +265,17 @@ export async function createPlanController(
   if (!userId) {
     return unauthorized("Unauthorized");
   }
-  if (parsed.data.owner_user_id !== userId) {
+
+  const payload = {
+    ...parsed.data,
+    type: parsed.data.type ?? "custom",
+  };
+
+  if (payload.owner_user_id !== userId) {
     return forbidden("owner_user_id must match the authenticated user");
   }
 
-  const { data, error } = await createPlan(parsed.data);
+  const { data, error } = await createPlan(payload);
   if (error) {
     console.error("[createPlanController] create error", error);
     return internalError(error, "Failed to create plan");
