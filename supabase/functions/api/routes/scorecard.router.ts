@@ -26,7 +26,7 @@ export function createScorecardsRouter(): Router {
     "GET",
     "list",
     handleScorecardsList,
-    [orgRoleGuardFromQuery("org_id", ["coach"])],
+    [orgRoleGuardFromQuery("org_id", ["coach","athlete"])],
   );
 
   router.add(

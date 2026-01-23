@@ -307,9 +307,6 @@ export async function listLatestEvaluationsByAthlete(
   if (athlete_name) {
     query = query.ilike("athletes.full_name", `%${athlete_name}%`);
   }
-  if (scorecard_name) {
-    query = query.ilike("scorecard_templates.name", `%${scorecard_name}%`);
-  }
   if (coach_id) {
     query = query.eq("evaluations.coach_id", coach_id);
   }
@@ -328,12 +325,21 @@ export async function listLatestEvaluationsByAthlete(
     return { data: [], count: 0, error };
   }
 
+  const scorecardQuery = scorecard_name
+    ? scorecard_name.toLowerCase()
+    : null;
   const grouped = new Map<string, LatestEvaluationRow>();
 
   for (const row of data ?? []) {
     const evaluation = row?.evaluation ?? null;
     if (!evaluation) continue;
     if (evaluation.org_id && evaluation.org_id !== org_id) continue;
+    if (scorecardQuery) {
+      const templateName = evaluation.scorecard_template?.name ?? "";
+      if (!templateName.toLowerCase().includes(scorecardQuery)) {
+        continue;
+      }
+    }
 
     const athlete = row?.athlete ?? null;
     const athleteId = athlete?.id ?? athlete_id;
