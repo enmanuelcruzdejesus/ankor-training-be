@@ -15,7 +15,7 @@ import type {
 const PLAN_SELECT =
   "id, org_id, owner_user_id, name, description, visibility, status, tags, estimated_minutes, created_at, updated_at";
 const PLAN_ITEM_SELECT =
-  "id, plan_id, section_title, section_order, position, item_type, drill_id, title, instructions, sets, reps, duration_seconds, rest_seconds, config, drill:drills!inner(name)";
+  "id, plan_id, section_title, section_order, position, item_type, drill_id, title, instructions, sets, reps, duration_min, duration_seconds, rest_seconds, config, drill:drills!inner(name)";
 const PLAN_WITH_ITEMS_SELECT = `${PLAN_SELECT}, practice_plan_items!inner(${PLAN_ITEM_SELECT})`;
 
 function mapPlanRow(row: any): PlanDto {
@@ -50,6 +50,7 @@ function mapPlanItemRow(row: any): PlanItemDto {
     instructions: row.instructions ?? null,
     sets: row.sets ?? null,
     reps: row.reps ?? null,
+    duration_min: row.duration_min ?? null,
     duration_seconds: row.duration_seconds ?? null,
     rest_seconds: row.rest_seconds ?? null,
     config: row.config ?? {},
@@ -72,6 +73,7 @@ function buildPlanItemRows(
     instructions: item.instructions ?? null,
     sets: item.sets ?? null,
     reps: item.reps ?? null,
+    duration_min: item.duration_min ?? null,
     duration_seconds: item.duration_seconds ?? null,
     rest_seconds: item.rest_seconds ?? null,
     config: item.config ?? {},

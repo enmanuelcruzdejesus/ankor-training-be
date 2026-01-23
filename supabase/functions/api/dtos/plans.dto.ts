@@ -55,6 +55,7 @@ export const PlanItemSchema = z
     instructions: z.string().trim().max(4000).optional().nullable(),
     sets: z.number({ coerce: true }).int().min(0).optional().nullable(),
     reps: z.number({ coerce: true }).int().min(0).optional().nullable(),
+    duration_min: z.number({ coerce: true }).int().min(0).optional().nullable(),
     duration_seconds: z.number({ coerce: true }).int().min(0).optional().nullable(),
     rest_seconds: z.number({ coerce: true }).int().min(0).optional().nullable(),
     config: z.record(z.unknown()).optional().nullable(),
@@ -134,6 +135,7 @@ export type PlanItemDto = {
   instructions: string | null;
   sets: number | null;
   reps: number | null;
+  duration_min: number | null;
   duration_seconds: number | null;
   rest_seconds: number | null;
   config: Record<string, unknown>;
