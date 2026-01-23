@@ -280,7 +280,7 @@ export async function handleEvaluationsList(
   }
 }
 
-export async function handleLatestEvaluationsByAthlete(
+export async function handleLatestEvaluations(
   req: Request,
   _origin?: string | null,
   _params?: Record<string, string>,
@@ -297,17 +297,22 @@ export async function handleLatestEvaluationsByAthlete(
       return badRequest("org_id (UUID) is required");
     }
 
-    const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
-    if (!RE_UUID.test(athlete_id)) {
+    const athleteIdRaw = (url.searchParams.get("athlete_id") ?? "").trim();
+    const athlete_id = athleteIdRaw ? athleteIdRaw : undefined;
+    if (athlete_id && !RE_UUID.test(athlete_id)) {
       return badRequest("athlete_id (UUID) is required");
     }
 
-    const scorecard_name = qp(url, "scorecard_name");
     const coachParam = qp(url, "coach");
-    const coach_name = qp(url, "coach_name") ?? coachParam;
+    const coach_name =
+      qp(url, "coach_name") ??
+      (coachParam && !RE_UUID.test(coachParam) ? coachParam : undefined);
     const coach_id =
       qp(url, "coach_id") ??
       (coachParam && RE_UUID.test(coachParam) ? coachParam : undefined);
+
+    const scorecard_name = qp(url, "scorecard_name");
+    const athlete_name = qp(url, "athlete_name");
 
     if (coach_id && !RE_UUID.test(coach_id)) {
       return badRequest("coach_id (UUID) is required");
@@ -351,17 +356,18 @@ export async function handleLatestEvaluationsByAthlete(
     const { data, count, error } = await listLatestEvaluationsByAthlete({
       org_id,
       athlete_id,
-      limit,
-      offset,
-      scorecard_name,
-      coach_name,
       coach_id,
+      coach_name,
+      athlete_name,
+      scorecard_name,
       date_from,
       date_to,
+      limit,
+      offset,
     });
 
     if (error) {
-      console.error("[handleLatestEvaluationsByAthlete] list error", error);
+      console.error("[handleLatestEvaluations] list error", error);
       return internalError(error);
     }
 
@@ -380,7 +386,7 @@ export async function handleLatestEvaluationsByAthlete(
       data: items,
     });
   } catch (err) {
-    console.error("[handleLatestEvaluationsByAthlete] error", err);
+    console.error("[handleLatestEvaluations] error", err);
     return internalError(err);
   }
 }
@@ -402,11 +408,6 @@ export async function handleEvaluationAthletesById(
       return badRequest("org_id (UUID) is required");
     }
 
-    const evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
-    if (!RE_UUID.test(evaluation_id)) {
-      return badRequest("evaluation_id (UUID) is required");
-    }
-
     const athlete_id = (url.searchParams.get("athlete_id") ?? "").trim();
     if (athlete_id && !RE_UUID.test(athlete_id)) {
       return badRequest("athlete_id (UUID) is required");
@@ -418,6 +419,45 @@ export async function handleEvaluationAthletesById(
       ? Math.min(Math.max(limitRaw, 1), 200)
       : 200;
     const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const evaluation_id = (url.searchParams.get("evaluation_id") ?? "").trim();
+    if (evaluation_id && !RE_UUID.test(evaluation_id)) {
+      return badRequest("evaluation_id (UUID) is required");
+    }
+
+    if (!evaluation_id) {
+      if (!athlete_id) {
+        return badRequest("evaluation_id or athlete_id (UUID) is required");
+      }
+
+      const { data, count, error } = await listLatestEvaluationsByAthlete({
+        org_id,
+        athlete_id,
+        limit,
+        offset,
+      });
+
+      if (error) {
+        console.error("[handleEvaluationAthletesById] list error", error);
+        return internalError(error);
+      }
+
+      const items = data.map((item) => ({
+        evaluation_id: item.evaluation_id,
+        date: formatEvaluationDate(item.created_at),
+        scorecard_name: item.scorecard_name,
+        coach_name: item.coach_name,
+        athlete_id: item.athlete_id,
+        athlete_full_name: item.athlete_full_name,
+        athletes_name: item.athlete_full_name,
+      }));
+
+      return json(200, {
+        ok: true,
+        count,
+        data: items,
+      });
+    }
 
     const { data, count, error } = await listEvaluationAthletesById({
       org_id,

@@ -24,7 +24,8 @@ export type LatestEvaluationRow = {
 
 export type LatestEvaluationsFilters = {
   org_id: string;
-  athlete_id: string;
+  athlete_id?: string;
+  athlete_name?: string;
   limit: number;
   offset: number;
   scorecard_name?: string;
@@ -264,6 +265,7 @@ export async function listLatestEvaluationsByAthlete(
   const {
     org_id,
     athlete_id,
+    athlete_name,
     limit,
     offset,
     scorecard_name,
@@ -297,15 +299,21 @@ export async function listLatestEvaluationsByAthlete(
       )
     `,
     )
-    .eq("athlete_id", athlete_id)
     .eq("evaluations.org_id", org_id);
 
+  if (athlete_id) {
+    query = query.eq("athlete_id", athlete_id);
+  }
+  if (athlete_name) {
+    query = query.ilike("athletes.full_name", `%${athlete_name}%`);
+  }
   if (scorecard_name) {
     query = query.ilike("scorecard_templates.name", `%${scorecard_name}%`);
   }
   if (coach_id) {
     query = query.eq("evaluations.coach_id", coach_id);
-  } else if (coach_name) {
+  }
+  if (coach_name) {
     query = query.ilike("coaches.full_name", `%${coach_name}%`);
   }
   if (date_from) {
