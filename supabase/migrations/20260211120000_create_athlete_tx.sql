@@ -116,11 +116,13 @@ begin
     )
     on conflict (id) do nothing;
 
-    insert into public.org_memberships (org_id, user_id, role, is_active)
-    values (p_org_id, p_guardian_user_id, 'parent', true)
-    on conflict (org_id, user_id) do update
-      set role = excluded.role,
-          is_active = true;
+    if p_guardian_user_id <> p_user_id then
+      insert into public.org_memberships (org_id, user_id, role, is_active)
+      values (p_org_id, p_guardian_user_id, 'parent', true)
+      on conflict (org_id, user_id) do update
+        set role = excluded.role,
+            is_active = true;
+    end if;
 
     insert into public.guardian_contacts (
       org_id,

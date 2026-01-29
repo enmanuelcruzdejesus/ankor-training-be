@@ -171,9 +171,13 @@ export async function createAthlete(
   }
 
   const full_name = input.full_name ?? buildFullName(input.first_name, input.last_name);
+  const athleteEmail = input.email.trim();
+  const guardianEmail = input.parent_email.trim();
+  const guardianMatchesAthlete =
+    athleteEmail.toLowerCase() === guardianEmail.toLowerCase();
 
   const { data: created, error: createErr } = await client.auth.admin.createUser({
-    email: input.email,
+    email: athleteEmail,
     password: input.password,
     user_metadata: {
       first_name: input.first_name,
@@ -193,7 +197,6 @@ export async function createAthlete(
     return { data: null, error: new Error("User was not returned by Supabase") };
   }
 
-  const guardianEmail = input.parent_email.trim();
   const { data: guardianRow, error: guardianLookupErr } = await client
     .from("guardian_contacts")
     .select("id")
@@ -210,26 +213,30 @@ export async function createAthlete(
   let guardianUserId: string | null = null;
 
   if (!guardianId) {
-    const { data: guardianCreated, error: guardianCreateErr } = await client.auth.admin.createUser({
-      email: guardianEmail,
-      password: input.password,
-      user_metadata: {
-        full_name: input.parent_full_name,
-        cell_number: input.parent_mobile_phone,
-      },
-      app_metadata: { role: "parent" },
-      email_confirm: true,
-    });
+    if (guardianMatchesAthlete) {
+      guardianUserId = userId;
+    } else {
+      const { data: guardianCreated, error: guardianCreateErr } = await client.auth.admin.createUser({
+        email: guardianEmail,
+        password: input.password,
+        user_metadata: {
+          full_name: input.parent_full_name,
+          cell_number: input.parent_mobile_phone,
+        },
+        app_metadata: { role: "parent" },
+        email_confirm: true,
+      });
 
-    if (guardianCreateErr) {
-      await client.auth.admin.deleteUser(userId).catch(() => {});
-      return { data: null, error: guardianCreateErr };
-    }
+      if (guardianCreateErr) {
+        await client.auth.admin.deleteUser(userId).catch(() => {});
+        return { data: null, error: guardianCreateErr };
+      }
 
-    guardianUserId = guardianCreated.user?.id ?? null;
-    if (!guardianUserId) {
-      await client.auth.admin.deleteUser(userId).catch(() => {});
-      return { data: null, error: new Error("Guardian user was not returned by Supabase") };
+      guardianUserId = guardianCreated.user?.id ?? null;
+      if (!guardianUserId) {
+        await client.auth.admin.deleteUser(userId).catch(() => {});
+        return { data: null, error: new Error("Guardian user was not returned by Supabase") };
+      }
     }
   }
 
@@ -240,7 +247,7 @@ export async function createAthlete(
     p_first_name: input.first_name,
     p_last_name: input.last_name,
     p_full_name: full_name,
-    p_email: input.email,
+    p_email: athleteEmail,
     p_phone: input.phone ?? null,
     p_cell_number: input.cell_number ?? null,
     p_gender: input.gender,
