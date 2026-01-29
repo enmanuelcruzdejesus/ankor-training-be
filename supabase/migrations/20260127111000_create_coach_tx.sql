@@ -53,8 +53,6 @@ begin
   insert into public.coaches (
     org_id,
     user_id,
-    first_name,
-    last_name,
     full_name,
     email,
     phone,
@@ -63,8 +61,6 @@ begin
   values (
     p_org_id,
     p_user_id,
-    p_first_name,
-    p_last_name,
     v_full_name,
     p_email,
     p_phone,

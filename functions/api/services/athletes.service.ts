@@ -25,7 +25,9 @@ function mapAthleteRow(row: any): AthleteDto {
     : row.athlete_guardians
     ? [row.athlete_guardians]
     : [];
-  const guardian = guardianRows[0]?.guardian ?? null;
+  const guardianRow = guardianRows[0] ?? null;
+  const guardian = guardianRow?.guardian ?? null;
+  const guardianRelationship = guardianRow?.relationship ?? null;
 
   const teamsById = new Map<string, AthleteTeamDto>();
   for (const item of teamRows) {
@@ -60,6 +62,7 @@ function mapAthleteRow(row: any): AthleteDto {
           full_name: guardian.full_name ?? null,
           email: guardian.email ?? null,
           phone_number: guardian.phone ?? null,
+          relationship: guardianRelationship ?? null,
         }
       : null,
   };
