@@ -9,8 +9,9 @@ export function createUsersRouter(): Router {
     "GET",
     "list",
     listOrgUsersController,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
 
   return router;
 }
+

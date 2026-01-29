@@ -2,7 +2,7 @@ import type { Middleware, RequestContext } from "../routes/router.ts";
 import { sbAdmin, sbAnon } from "../services/supabase.ts";
 import { forbidden, unauthorized } from "./http.ts";
 
-const ORG_ROLES = ["owner", "admin", "coach", "athlete"] as const;
+const ORG_ROLES = ["owner", "admin", "coach", "athlete", "parent"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
 
 export type AuthUser = {

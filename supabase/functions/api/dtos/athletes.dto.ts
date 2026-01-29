@@ -18,6 +18,7 @@ export const GetAthleteByIdSchema = z.object({
 
 export const CreateAthleteSchema = z.object({
   org_id: uuid(),
+  team_id: uuid(),
   first_name: z.string().trim().min(1, "first_name is required"),
   last_name: z.string().trim().min(1, "last_name is required"),
   full_name: z.string().trim().min(1).optional().nullable(),
@@ -25,6 +26,14 @@ export const CreateAthleteSchema = z.object({
   password: z.string().min(8, "password must be at least 8 characters"),
   phone: z.string().trim().optional().nullable(),
   cell_number: z.string().trim().optional().nullable(),
+  gender: z.string().trim().min(1, "gender is required"),
+  parent_email: z.string().trim().email("parent_email is required"),
+  parent_full_name: z.string().trim().min(1, "parent_full_name is required"),
+  parent_mobile_phone: z.string().trim().min(1, "parent_mobile_phone is required"),
+  relationship: z.enum(
+    ["mother", "father", "guardian", "step-parent", "grandparent", "sibling", "other"],
+    { required_error: "relationship is required" },
+  ),
   graduation_year: z.number({ coerce: true }).int().min(1900).max(2100).optional().nullable(),
 });
 
@@ -68,6 +77,12 @@ export type AthleteDto = {
   email: string | null;
   phone: string | null;
   cell_number: string | null;
+  gender: string | null;
   graduation_year: number | null;
   teams: AthleteTeamDto[];
+  parent: {
+    full_name: string | null;
+    email: string | null;
+    phone_number: string | null;
+  } | null;
 };

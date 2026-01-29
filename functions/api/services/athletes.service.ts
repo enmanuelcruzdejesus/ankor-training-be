@@ -20,6 +20,12 @@ function mapAthleteRow(row: any): AthleteDto {
     : row.team_athletes
     ? [row.team_athletes]
     : [];
+  const guardianRows = Array.isArray(row.athlete_guardians)
+    ? row.athlete_guardians
+    : row.athlete_guardians
+    ? [row.athlete_guardians]
+    : [];
+  const guardian = guardianRows[0]?.guardian ?? null;
 
   const teamsById = new Map<string, AthleteTeamDto>();
   for (const item of teamRows) {
@@ -46,8 +52,16 @@ function mapAthleteRow(row: any): AthleteDto {
     email: profile?.email ?? row.email ?? null,
     phone: row.phone ?? null,
     cell_number: row.cell_number ?? null,
+    gender: row.gender ?? null,
     graduation_year: row.graduation_year ?? null,
     teams: Array.from(teamsById.values()),
+    parent: guardian
+      ? {
+          full_name: guardian.full_name ?? null,
+          email: guardian.email ?? null,
+          phone_number: guardian.phone ?? null,
+        }
+      : null,
   };
 }
 
@@ -79,6 +93,7 @@ export async function listAthletes(
       full_name,
       phone,
       cell_number,
+      gender,
       graduation_year,
       profile:profiles(email),
       ${teamEmbed}
@@ -131,9 +146,11 @@ export async function getAthleteById(
       full_name,
       phone,
       cell_number,
+      gender,
       graduation_year,
       profile:profiles(email),
-      team_athletes(team_id, status, team:teams(id, name))
+      team_athletes(team_id, status, team:teams(id, name)),
+      athlete_guardians(relationship, guardian:guardian_contacts(full_name, email, phone))
     `,
     )
     .eq("id", athlete_id)
@@ -176,20 +193,71 @@ export async function createAthlete(
     return { data: null, error: new Error("User was not returned by Supabase") };
   }
 
+  const guardianEmail = input.parent_email.trim();
+  const { data: guardianRow, error: guardianLookupErr } = await client
+    .from("guardian_contacts")
+    .select("id")
+    .eq("org_id", input.org_id)
+    .ilike("email", guardianEmail)
+    .maybeSingle();
+
+  if (guardianLookupErr) {
+    await client.auth.admin.deleteUser(userId).catch(() => {});
+    return { data: null, error: guardianLookupErr };
+  }
+
+  let guardianId = guardianRow?.id ?? null;
+  let guardianUserId: string | null = null;
+
+  if (!guardianId) {
+    const { data: guardianCreated, error: guardianCreateErr } = await client.auth.admin.createUser({
+      email: guardianEmail,
+      password: input.password,
+      user_metadata: {
+        full_name: input.parent_full_name,
+        cell_number: input.parent_mobile_phone,
+      },
+      app_metadata: { role: "parent" },
+      email_confirm: true,
+    });
+
+    if (guardianCreateErr) {
+      await client.auth.admin.deleteUser(userId).catch(() => {});
+      return { data: null, error: guardianCreateErr };
+    }
+
+    guardianUserId = guardianCreated.user?.id ?? null;
+    if (!guardianUserId) {
+      await client.auth.admin.deleteUser(userId).catch(() => {});
+      return { data: null, error: new Error("Guardian user was not returned by Supabase") };
+    }
+  }
+
   const { data: txData, error: txErr } = await client.rpc("create_athlete_tx", {
     p_user_id: userId,
     p_org_id: input.org_id,
+    p_team_id: input.team_id,
     p_first_name: input.first_name,
     p_last_name: input.last_name,
     p_full_name: full_name,
     p_email: input.email,
     p_phone: input.phone ?? null,
     p_cell_number: input.cell_number ?? null,
+    p_gender: input.gender,
+    p_guardian_id: guardianId,
+    p_guardian_user_id: guardianUserId,
+    p_guardian_full_name: input.parent_full_name,
+    p_guardian_email: guardianEmail,
+    p_guardian_phone: input.parent_mobile_phone,
+    p_guardian_relationship: input.relationship,
     p_graduation_year: input.graduation_year ?? null,
   });
 
   if (txErr) {
     await client.auth.admin.deleteUser(userId).catch(() => {});
+    if (guardianUserId) {
+      await client.auth.admin.deleteUser(guardianUserId).catch(() => {});
+    }
     return { data: null, error: txErr };
   }
 
@@ -202,10 +270,37 @@ export async function createAthlete(
 
   if (!athleteId) {
     await client.auth.admin.deleteUser(userId).catch(() => {});
+    if (guardianUserId) {
+      await client.auth.admin.deleteUser(guardianUserId).catch(() => {});
+    }
     return { data: null, error: new Error("Failed to create athlete") };
   }
 
-  return await getAthleteById(athleteId, input.org_id);
+  const athleteResult = await getAthleteById(athleteId, input.org_id);
+  if (athleteResult.error || !athleteResult.data) {
+    await client
+      .from("athletes")
+      .delete()
+      .eq("id", athleteId)
+      .eq("org_id", input.org_id)
+      .catch(() => {});
+    await client.auth.admin.deleteUser(userId).catch(() => {});
+    if (guardianUserId) {
+      await client.auth.admin.deleteUser(guardianUserId).catch(() => {});
+      await client
+        .from("guardian_contacts")
+        .delete()
+        .eq("org_id", input.org_id)
+        .ilike("email", guardianEmail)
+        .catch(() => {});
+    }
+    return {
+      data: null,
+      error: athleteResult.error ?? new Error("Failed to load created athlete"),
+    };
+  }
+
+  return athleteResult;
 }
 
 export async function updateAthlete(

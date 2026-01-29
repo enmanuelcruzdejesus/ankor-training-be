@@ -11,14 +11,15 @@ export function createSkillsRouter(): Router {
     "GET",
     "list",
     handleSkillsList,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
   router.add(
     "GET",
     ":id",
     handleSkillById,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
 
   return router;
 }
+

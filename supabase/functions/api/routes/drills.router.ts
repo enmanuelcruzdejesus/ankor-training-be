@@ -40,20 +40,20 @@ export function createDrillsRouter(): Router {
     "GET",
     "media/:drill_id/play",
     getDrillMediaPlaybackController,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
   router.add(
     "GET",
     "list",
     listDrillsController,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
   router.add("GET", "segments", listSegmentsController);
   router.add(
     "GET",
     "tags",
     listDrillTagsController,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
   router.add(
     "PATCH",
@@ -65,8 +65,9 @@ export function createDrillsRouter(): Router {
     "GET",
     ":id",
     getDrillByIdController,
-    [orgRoleGuardFromQuery("org_id", ["coach", "athlete"])],
+    [orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"])],
   );
 
   return router;
 }
+

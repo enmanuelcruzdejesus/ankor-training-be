@@ -217,7 +217,7 @@ export function planCreateGuard(): Middleware {
     const userId = getUserId(ctx);
     if (userId instanceof Response) return userId;
 
-    const access = await requireOrgRole(userId, value, ["coach", "athlete"]);
+    const access = await requireOrgRole(userId, value, ["coach", "athlete", "parent"]);
     if ("response" in access) return access.response;
 
     ctx.org_id = value;
@@ -225,3 +225,4 @@ export function planCreateGuard(): Middleware {
     return null;
   };
 }
+

@@ -23,7 +23,7 @@ export function createPlansRouter(): Router {
     "list",
     listPlansController,
     [
-      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"]),
       userQueryGuard("user_id", { allowMissing: true }),
     ],
   );
@@ -32,7 +32,7 @@ export function createPlansRouter(): Router {
     "invited",
     listInvitedPlansController,
     [
-      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"]),
       userQueryGuard("user_id"),
     ],
   );
@@ -41,7 +41,7 @@ export function createPlansRouter(): Router {
     ":id",
     getPlanByIdController,
     [
-      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"]),
       planReadGuard(),
     ],
   );
@@ -50,7 +50,7 @@ export function createPlansRouter(): Router {
     ":id/invite",
     invitePlanMembersController,
     [
-      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"]),
       planWriteGuard(),
     ],
   );
@@ -59,7 +59,7 @@ export function createPlansRouter(): Router {
     ":id",
     updatePlanController,
     [
-      orgRoleGuardFromQuery("org_id", ["coach", "athlete"]),
+      orgRoleGuardFromQuery("org_id", ["coach", "athlete", "parent"]),
       planWriteGuard(),
     ],
   );
@@ -72,3 +72,4 @@ export function createPlansRouter(): Router {
 
   return router;
 }
+
