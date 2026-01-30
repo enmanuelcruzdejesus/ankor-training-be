@@ -111,14 +111,13 @@ export async function createCoach(
     return { data: null, error: new Error("Supabase client not initialized") };
   }
 
-  const full_name = input.full_name ?? buildFullName(input.first_name, input.last_name);
+  const full_name = input.full_name?.trim() || null;
 
   const { data: created, error: createErr } = await client.auth.admin.createUser({
     email: input.email,
     password: input.password,
     user_metadata: {
-      first_name: input.first_name,
-      last_name: input.last_name,
+      full_name,
       cell_number: input.cell_number ?? null,
     },
     app_metadata: { role: "coach" },
@@ -137,8 +136,8 @@ export async function createCoach(
   const { data: txData, error: txErr } = await client.rpc("create_coach_tx", {
     p_user_id: userId,
     p_org_id: input.org_id,
-    p_first_name: input.first_name,
-    p_last_name: input.last_name,
+    p_first_name: null,
+    p_last_name: null,
     p_full_name: full_name,
     p_email: input.email,
     p_phone: input.phone ?? null,
@@ -195,13 +194,6 @@ export async function updateCoach(
   if (input.full_name !== undefined) patch.full_name = input.full_name;
   if (input.phone !== undefined) patch.phone = input.phone;
   if (input.cell_number !== undefined) patch.cell_number = input.cell_number;
-
-  const needsFullName = input.full_name === undefined &&
-    (input.first_name !== undefined || input.last_name !== undefined);
-
-  if (needsFullName) {
-    patch.full_name = buildFullName(input.first_name ?? null, input.last_name ?? null);
-  }
 
   if (Object.keys(patch).length > 0) {
     const { data, error } = await client

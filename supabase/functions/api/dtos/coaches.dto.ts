@@ -17,8 +17,6 @@ export const GetCoachByIdSchema = z.object({
 
 export const CreateCoachSchema = z.object({
   org_id: uuid(),
-  first_name: z.string().trim().min(1, "first_name is required"),
-  last_name: z.string().trim().min(1, "last_name is required"),
   full_name: z.string().trim().min(1).optional().nullable(),
   email: z.string().trim().email("email is required"),
   password: z.string().min(8, "password must be at least 8 characters"),
@@ -29,8 +27,6 @@ export const CreateCoachSchema = z.object({
 export const UpdateCoachSchema = z
   .object({
     user_id: uuid().optional().nullable(),
-    first_name: z.string().trim().min(1).optional(),
-    last_name: z.string().trim().min(1).optional(),
     full_name: z.string().trim().min(1).optional().nullable(),
     phone: z.string().trim().optional().nullable(),
     cell_number: z.string().trim().optional().nullable(),

@@ -52,13 +52,17 @@ begin
     p_last_name,
     p_email,
     'athlete'
-  );
+  )
+  on conflict (id) do nothing;
 
   insert into public.org_memberships (org_id, user_id, role, is_active)
   values (p_org_id, p_user_id, 'athlete', true)
   on conflict (org_id, user_id) do update
-    set role = excluded.role,
-        is_active = true;
+    set role = case
+      when org_memberships.role = 'parent' then org_memberships.role
+      else excluded.role
+    end,
+    is_active = true;
 
   insert into public.athletes (
     org_id,
@@ -91,6 +95,26 @@ begin
   on conflict (team_id, user_id, role) do nothing;
 
   v_guardian_id := p_guardian_id;
+  if v_guardian_id is null then
+    if p_guardian_phone is not null then
+      select id
+      into v_guardian_id
+      from public.guardian_contacts
+      where org_id = p_org_id
+        and phone = p_guardian_phone
+      limit 1;
+    end if;
+
+    if v_guardian_id is null and p_guardian_email is not null then
+      select id
+      into v_guardian_id
+      from public.guardian_contacts
+      where org_id = p_org_id
+        and lower(email) = lower(p_guardian_email)
+      limit 1;
+    end if;
+  end if;
+
   if v_guardian_id is null then
     if p_guardian_user_id is null then
       raise exception 'guardian user id is required';

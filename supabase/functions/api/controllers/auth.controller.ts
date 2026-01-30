@@ -164,11 +164,46 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
   }
   if (!profile) return notFound("Profile not found", origin);
 
+  const profileUserId = typeof profile.id === "string" ? profile.id.trim() : "";
+  const profileOrgId = typeof profile.default_org_id === "string"
+    ? profile.default_org_id.trim()
+    : "";
+  let effectiveRole = profile.role ?? null;
+
+  if (profileOrgId && profileUserId) {
+    const { data: athleteRow, error: athleteErr } = await sbAdmin
+      .from("athletes")
+      .select("email")
+      .eq("org_id", profileOrgId)
+      .eq("user_id", profileUserId)
+      .maybeSingle();
+
+    if (athleteErr) {
+      return serverError(`Failed to load athlete: ${athleteErr.message}`, origin);
+    }
+
+    const { data: guardianRow, error: guardianErr } = await sbAdmin
+      .from("guardian_contacts")
+      .select("email")
+      .eq("org_id", profileOrgId)
+      .eq("user_id", profileUserId)
+      .maybeSingle();
+
+    if (guardianErr) {
+      return serverError(`Failed to load guardian: ${guardianErr.message}`, origin);
+    }
+
+    const athleteEmail = athleteRow?.email?.trim().toLowerCase() ?? "";
+    const guardianEmail = guardianRow?.email?.trim().toLowerCase() ?? "";
+    if (athleteEmail && guardianEmail && athleteEmail === guardianEmail) {
+      effectiveRole = "parent";
+    }
+  }
+
   let coach_id: string | null = null;
   let athlete_id: string | null = null;
-  const profileUserId = typeof profile.id === "string" ? profile.id.trim() : "";
 
-  if (profile.role === "coach" && profileUserId) {
+  if (effectiveRole === "coach" && profileUserId) {
     const { data: coachRow, error: coachErr } = await sbAdmin
       .from("coaches")
       .select("id")
@@ -180,7 +215,7 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
     }
 
     coach_id = coachRow?.id ?? null;
-  } else if (profile.role === "athlete" && profileUserId) {
+  } else if (effectiveRole === "athlete" && profileUserId) {
     const { data: athleteRow, error: athleteErr } = await sbAdmin
       .from("athletes")
       .select("id")
@@ -200,7 +235,7 @@ export async function handleAuthLogin(req: Request, origin: string | null) {
       id: profile.id,
       full_name: profile.full_name ?? null,
       email: profile.email,
-      role: profile.role ?? null,
+      role: effectiveRole,
       default_org_id: profile.default_org_id ?? null,
       coach_id,
       athlete_id,
